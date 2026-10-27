@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# Fail when a runs-on in discipline.yml is not one of the three forms it may use:
-# [self-hosted, digio-orchestration] for the Mac mini (templates/WORKFLOWS.md),
-# ubuntu-latest, or the product hosted-runner toggle for a job that holds a
-# secret. It also fails when no job runs on the Mac mini. The ruleset runs this
-# against the org's discipline.yml through GITHUB_ACTION_PATH, not the product
-# tree. templates/scripts/workflow-rules.py holds the fork and secret rules.
+# Product gates run on the Mac mini; jobs with App keys run on GitHub.
 set -uo pipefail
 file="${1:-}"
 [ -f "$file" ] || { echo "selftest-workflow: no file ${file:-<none>}" >&2; exit 2; }

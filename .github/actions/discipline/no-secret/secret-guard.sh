@@ -3,8 +3,8 @@
 #
 # Refuses a push that adds a credential-shaped secret, in the pushed tree or
 # in any commit the push sends, even one that a later commit deletes. The rule
-# is the global brief's: never commit a secret value. hooks/run.sh pre-push
-# feeds it Git's ref list on stdin from every clone that installed the hooks.
+# is the global brief's: never commit a secret value. Discipline feeds it
+# a pre-push ref list for each commit in the range.
 # secret-guard-selftest.sh beside it pins it.
 #
 # Flags only credential-shaped values: a Neon role password (npg_ and 8+

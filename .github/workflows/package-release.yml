@@ -1,7 +1,7 @@
 # The release of a shared npm package, @digio-nz/auth-types or @digio-nz/shared-ui, as a reusable workflow.
 # A shared repo calls it from .github/workflows/release.yml, with one job named release, on pull_request, merge_group
 # and a push to main. The caller grants contents: write and packages: write; each job here lowers them to what it needs.
-# The rules are in briefs/versioning.md; .github/actions/package-release/release.sh holds them, and this file only
+# The rules are in digio-michelin/briefs/versioning.md; .github/actions/package-release/release.sh holds them, and this file only
 # runs it, through the composite action beside it.
 #
 # plan runs on every event, with read access to the contents only: check and next read no registry. It runs
@@ -14,7 +14,7 @@
 # since the last tag.
 #
 # Both jobs run on GitHub, not the Mac mini: publish holds a token that can write, and a shared repo's runs must not
-# wait on the Mini's runners (templates/WORKFLOWS.md). Both check out the whole history and every tag, so next
+# wait on the Mini's runners (digio-michelin/templates/WORKFLOWS.md). Both check out the whole history and every tag, so next
 # sees the last tag and each first-parent title. publish keeps the checkout credentials, because it pushes the tag.
 name: Package Release
 
