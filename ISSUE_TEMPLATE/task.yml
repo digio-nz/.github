@@ -1,0 +1,49 @@
+name: Task
+description: A standalone piece of work small enough to need no Plan.
+type: Task
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Target: about 12 content lines, excluding headings and blank lines.
+        These are targets, not limits. Use one short sentence or bullet per line.
+        Keep the detail needed to build and test the work.
+  - type: input
+    id: origin
+    attributes:
+      label: Origin
+      description: >
+        Target: about 1 line.
+        What started this: Digby's instruction, a Slack thread, or the task that surfaced it.
+        Work decomposed from a Plan files as a Phase, never as a Task.
+      placeholder: "Digby instruction, <date> / Slack thread <link>"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What do you want?
+      description: >
+        Target: about 3 lines.
+        Plain language. The outcome, not the implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why, or what does it unblock?
+      description: >
+        Target: about 2 lines.
+        The context that makes honest acceptance criteria possible.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: >
+        Target: about 6 lines.
+        "Done means...": observable statements, each one a test can assert.
+      placeholder: |
+        - A planner can ...
+        - When ..., the app ...
+    validations:
+      required: true

@@ -1,0 +1,69 @@
+name: Phase
+description: One phase of an approved Plan, verifiable on its own, filed as its sub-issue and shipped as one stacked PR.
+title: "P<n>.<i>: <title>"
+type: Phase
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Target: about 25 content lines, excluding headings and blank lines.
+        These are targets, not limits. Use one short sentence or bullet per line.
+        Keep the detail needed to build and test the work.
+  - type: input
+    id: plan
+    attributes:
+      label: Plan
+      description: >
+        Target: about 1 line.
+        The parent Plan this phase comes from. File this issue as a sub-issue of that plan.
+      placeholder: "#<plan issue number>, phase <i>"
+    validations:
+      required: true
+  - type: input
+    id: base
+    attributes:
+      label: Base
+      description: >
+        Target: about 1 line.
+        The branch this phase's PR stacks on: the previous phase's branch, or the default branch for phase 1.
+      placeholder: "<builder>-issue-<previous phase issue> / main"
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: >
+        Target: about 12 lines.
+        What this phase builds, concretely: the components, files or surfaces it touches.
+        The decisions were made in the plan; quote only the ones this phase executes, so the issue stands alone.
+    validations:
+      required: true
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      description: >
+        Target: about 3 lines.
+        What a worker might reasonably reach for but must not: later phases, neighbouring cleanups,
+        decisions the plan left to another phase. One line each, with where that work lives instead.
+      placeholder: |
+        - <tempting adjacent work>, phase <i> / issue #<n>
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: >
+        Target: about 8 lines.
+        "Done means...": observable statements, each one a test can assert.
+        This phase's slice of the plan's "Done means", not a copy of it.
+      placeholder: |
+        - A planner can ...
+        - When ..., the app ...
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: >
+        One phase, one PR, stacked on the base above and reviewed once. A worker creates the PR
+        and never restacks; the orchestrator syncs the stack when a lower PR lands.

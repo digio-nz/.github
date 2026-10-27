@@ -1,0 +1,70 @@
+name: Bug
+description: Shipped behaviour that is wrong, reported by a person, an agent, or automated collection.
+type: Bug
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Target: about 15 content lines, excluding headings and blank lines.
+        These are targets, not limits. Use one short sentence or bullet per line.
+        Keep the detail needed to build and test the work.
+  - type: input
+    id: origin
+    attributes:
+      label: Origin
+      description: >
+        Target: about 1 line.
+        Who or what observed it: a user report, Digby, an agent session, a monitoring probe.
+        An automated collector fills this with its own name.
+      placeholder: "User report, <date> / Probe run <link>"
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed
+      description: >
+        Target: about 3 lines.
+        What actually happens, concretely: the page or surface, the action taken, the wrong result.
+        Attach a screenshot or log where one exists.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: >
+        Target: about 2 lines.
+        What should happen instead, in plain language.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: >
+        Target: about 4 lines.
+        Steps from a fresh start. If it cannot be reproduced yet, say what was tried;
+        "unknown" is honest, silence is not.
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See ...
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: >
+        Target: about 5 lines.
+        "Fixed means...": observable statements, each one a test can assert.
+        Usually includes a regression test.
+      placeholder: |
+        - When ..., the app now ...
+        - A test covers ...
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: >
+        One Bug, one PR, and the PR closes this issue. A bug whose fix needs design work
+        or several PRs is promoted to a Plan instead.

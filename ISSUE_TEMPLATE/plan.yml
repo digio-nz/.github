@@ -1,0 +1,74 @@
+name: Plan
+description: A piece of work large enough to need decisions before anyone builds. Its phases become sub-issues.
+title: "P<n>: <title>"
+type: Plan
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Target: about 35 content lines, excluding headings and blank lines.
+        These are targets, not limits. Use one short sentence or bullet per line.
+        Keep the detail needed to build and test the work.
+  - type: input
+    id: origin
+    attributes:
+      label: Origin
+      description: >
+        Target: about 1 line.
+        What started this: Digby's instruction, a Slack thread, or the finding that surfaced it.
+        A plan never starts from nothing, so name the capture.
+      placeholder: "Digby instruction, <date> / Slack thread <link>"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: >
+        Target: about 5 lines.
+        The situation being changed, in plain language, with the surfaces or files where it lives.
+        A cold reader learns here why the plan exists.
+    validations:
+      required: true
+  - type: textarea
+    id: decisions
+    attributes:
+      label: Decisions
+      description: >
+        Target: about 15 lines.
+        What was decided and why, one declarative sentence each.
+        Open questions do not belong here; they block the plan until answered.
+        Link the mockup or doc that settled each contested decision.
+      placeholder: |
+        - The map shows ... because ...  (mockup: ...)
+        - Errors stay persistent because ...
+    validations:
+      required: true
+  - type: textarea
+    id: phases
+    attributes:
+      label: Phases
+      description: >
+        Target: about 6 lines.
+        One line per phase, in build order, each shippable and verifiable on its own.
+        Each becomes a Phase sub-issue and one PR in the stack.
+      placeholder: |
+        1. <phase>, done means <observable end state>
+        2. <phase>, done means <observable end state>
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done means
+      description: >
+        Target: about 8 lines.
+        The observable end state of the whole plan: what Digby sees working when every phase has landed.
+        Statements a test could assert.
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: >
+        A plan is days of work, not weeks. Each phase ships as a PR stacked on the previous one;
+        the plan closes when the last PR lands.
