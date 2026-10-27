@@ -1,0 +1,15 @@
+name: pr-title
+description: The PR title is a conventional commit title
+runs:
+  using: composite
+  steps:
+    - name: The PR title is a conventional commit title
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        title="$(cat "$RUNNER_TEMP/pr-title.txt")"
+        author="$(jq -r '.user.login // ""' < "$RUNNER_TEMP/pr.json")"
+        branch="$(jq -r '.head.ref // ""' < "$RUNNER_TEMP/pr.json")"
+        bash "$GITHUB_ACTION_PATH/../gates.sh" pr-title "$title" "$author" "$branch"

@@ -1,0 +1,19 @@
+name: append-only
+description: Append-only records are not rewritten
+inputs:
+  base:
+    required: true
+  head:
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Append-only records are not rewritten
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        BASE: ${{ inputs.base }}
+        HEAD: ${{ inputs.head }}
+      run: |
+        set -euo pipefail
+        bash "$GITHUB_ACTION_PATH/../gates.sh" append-only "$BASE" "$HEAD" "$RUNNER_TEMP/pr-body.txt"

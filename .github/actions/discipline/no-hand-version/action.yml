@@ -1,0 +1,19 @@
+name: no-hand-version
+description: The diff changes no hand-edited version or changelog
+inputs:
+  base:
+    required: true
+  head:
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: The diff changes no hand-edited version or changelog
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        BASE: ${{ inputs.base }}
+        HEAD: ${{ inputs.head }}
+      run: |
+        set -euo pipefail
+        bash "$GITHUB_ACTION_PATH/../gates.sh" no-hand-version "$BASE" "$HEAD"

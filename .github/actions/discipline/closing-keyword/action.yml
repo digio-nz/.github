@@ -1,0 +1,12 @@
+name: closing-keyword
+description: The PR carries a closing keyword or a No issue line
+runs:
+  using: composite
+  steps:
+    - name: The PR carries a closing keyword or a No issue line
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        bash "$GITHUB_ACTION_PATH/../gates.sh" closing-keyword "$RUNNER_TEMP/pr-body.txt" "$(jq -r .head.ref < "$RUNNER_TEMP/pr.json")" "$(jq -r .user.login < "$RUNNER_TEMP/pr.json")"

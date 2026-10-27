@@ -1,0 +1,5 @@
+# actionlint reads this file by default. Every `runs-on` label that is not a GitHub-hosted image must be declared here,
+# or actionlint refuses it as unknown. `digio-orchestration` is the Mac mini's self-hosted runner.
+self-hosted-runner:
+  labels:
+    - digio-orchestration

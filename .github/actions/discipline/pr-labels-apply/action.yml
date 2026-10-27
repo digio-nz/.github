@@ -1,0 +1,54 @@
+name: pr-labels-apply
+description: Label the PR (pr-labeller apply)
+inputs:
+  repo:
+    required: true
+  number:
+    required: true
+  reader-app-id:
+    description: GitHub App id of digio-reader
+    required: false
+    default: ""
+  reader-app-private-key:
+    description: GitHub App private key of digio-reader
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Create the reader token
+      if: ${{ inputs.reader-app-private-key != '' }}
+      id: reader
+      uses: actions/create-github-app-token@v3
+      with:
+        app-id: ${{ inputs.reader-app-id }}
+        private-key: ${{ inputs.reader-app-private-key }}
+        owner: digio-nz
+        permission-issues: read
+        permission-contents: read
+    - name: Read the Skills Pin
+      id: skills-pin
+      shell: bash
+      run: echo "ref=$(cat "$GITHUB_ACTION_PATH/../../../../skills.ref")" >> "$GITHUB_OUTPUT"
+    - name: Check Out Skills
+      uses: actions/checkout@v7
+      with:
+        repository: digio-nz/digio-skills
+        ref: ${{ steps.skills-pin.outputs.ref }}
+        token: ${{ steps.reader.outputs.token || github.token }}
+        path: .digio-skills
+        persist-credentials: false
+    - name: Install Skills Dependencies
+      shell: bash
+      run: npm ci --prefix "$GITHUB_WORKSPACE/.digio-skills" --omit=dev --no-audit --no-fund
+    - name: Label the PR (pr-labeller apply)
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        READER_TOKEN: ${{ steps.reader.outputs.token }}
+        DIGIO_SKILLS_ROOT: ${{ github.workspace }}/.digio-skills
+        REPO: ${{ inputs.repo }}
+        NUMBER: ${{ inputs.number }}
+      run: |
+        set -euo pipefail
+        bash "$GITHUB_ACTION_PATH/../gates.sh" pr-labels-apply "$REPO" "$NUMBER" "$(jq -r .base.sha < "$RUNNER_TEMP/pr.json")" "$(jq -r .head.sha < "$RUNNER_TEMP/pr.json")"

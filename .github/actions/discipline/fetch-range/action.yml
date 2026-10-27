@@ -1,0 +1,16 @@
+name: fetch-range
+description: Confirm the commit range the gates read
+inputs:
+  base:
+    required: true
+  head:
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Fetch the range the gates read
+      shell: bash
+      env:
+        BASE: ${{ inputs.base }}
+        HEAD: ${{ inputs.head }}
+      run: bash "$GITHUB_ACTION_PATH/fetch-range.sh" "$BASE" "$HEAD"
