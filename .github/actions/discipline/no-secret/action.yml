@@ -1,0 +1,19 @@
+name: no-secret
+description: No commit adds a credential-shaped value
+inputs:
+  base:
+    required: true
+  head:
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: No commit adds a credential-shaped value
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        BASE: ${{ inputs.base }}
+        HEAD: ${{ inputs.head }}
+      run: |
+        set -euo pipefail
+        bash "$GITHUB_ACTION_PATH/../gates.sh" no-secret "$BASE" "$HEAD"

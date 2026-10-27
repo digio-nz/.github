@@ -1,0 +1,52 @@
+# The package release self-test, for each pull request that touches the package release action or its workflows.
+# release-selftest.sh builds scratch git repos with a bare origin and stub npm and gh commands, so it needs no network,
+# registry or token. It runs on GitHub's Linux and macOS runners: release.sh runs in a shared repo's GitHub run on
+# Linux, and on a person's Mac, so it is proved with both GNU and BSD tools.
+# A step that finds a problem prints one line for each failed case, annotates it, and exits 1.
+name: Check Package Release
+
+on:
+  pull_request:
+    paths:
+      - ".github/actions/package-release/**"
+      - ".github/workflows/package-release.yml"
+      - ".github/workflows/check-package-release.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-package-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  selftest:
+    name: Package Release Self-Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - name: Check Out the Repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "*"
+      - name: Self-Test release.sh
+        shell: bash
+        run: |
+          echo "runner: $(uname -sm), $(git --version), node $(node --version), npm $(npm --version)"
+          status=0
+          out="$(bash .github/actions/package-release/release-selftest.sh 2>&1)" || status=$?
+          echo "$out"
+          if [ "$status" -ne 0 ]; then
+            while IFS= read -r line; do
+              case "$line" in FAIL*) echo "::error title=package-release self-test::$line" ;; esac
+            done <<<"$out"
+            exit 1
+          fi

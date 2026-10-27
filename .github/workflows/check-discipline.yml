@@ -1,0 +1,50 @@
+# A change to a gate must still detect its violations from the PR checkout.
+name: Check Discipline
+
+on:
+  pull_request:
+    paths:
+      - ".github/actions/**"
+      - ".github/actionlint.yaml"
+      - ".github/workflows/discipline.yml"
+      - ".github/workflows/check-discipline.yml"
+      - "skills.ref"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-discipline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  discipline-selftest:
+    name: Discipline gates
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check Out the Repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "*"
+      - name: Install PyYAML
+        run: python3 -m pip install --user PyYAML
+      - name: The gates still detect their own violations
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash .github/actions/discipline/gates-selftest.sh
+          bash .github/actions/discipline/no-secret/secret-guard-selftest.sh
+      - name: The Discipline job runs on the Mac mini
+        shell: bash
+        run: bash .github/actions/discipline/selftest-workflow.sh .github/workflows/discipline.yml
+      - name: Lint the Workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/actions/discipline/gates.sh actionlint .github/workflows

@@ -1,0 +1,113 @@
+# The org ruleset runs this workflow on product repositories.
+# The public workflow repository runs its gates through check-discipline.yml.
+name: Discipline
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  merge_group:
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+jobs:
+  discipline:
+    name: Discipline
+    if: github.repository != 'digio-nz/.github' && (github.event_name == 'merge_group' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, digio-orchestration]
+    timeout-minutes: 15
+    steps:
+      - name: Read the PR live from the API
+        id: pr
+        uses: digio-nz/.github/.github/actions/discipline/read-pr@main
+      - name: Check out the commit that the event names
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.pr.outputs.head }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "*"
+      - name: Fetch the range the gates read
+        id: range
+        uses: digio-nz/.github/.github/actions/discipline/fetch-range@main
+        with:
+          base: ${{ steps.pr.outputs.base }}
+          head: ${{ steps.pr.outputs.head }}
+      - name: The PR title is a conventional commit title
+        if: ${{ !cancelled() && steps.range.outcome == 'success' }}
+        uses: digio-nz/.github/.github/actions/discipline/pr-title@main
+      - name: The PR carries a closing keyword or a No issue line
+        if: ${{ !cancelled() && steps.range.outcome == 'success' }}
+        uses: digio-nz/.github/.github/actions/discipline/closing-keyword@main
+      - name: The diff changes no hand-edited version or changelog
+        if: ${{ !cancelled() && steps.range.outcome == 'success' }}
+        uses: digio-nz/.github/.github/actions/discipline/no-hand-version@main
+        with:
+          base: ${{ steps.pr.outputs.base }}
+          head: ${{ steps.pr.outputs.head }}
+      - name: New migrations use a 14-digit timestamp prefix
+        if: ${{ !cancelled() && steps.range.outcome == 'success' }}
+        uses: digio-nz/.github/.github/actions/discipline/migrations@main
+        with:
+          base: ${{ steps.pr.outputs.base }}
+          head: ${{ steps.pr.outputs.head }}
+      - name: Append-only records are not rewritten
+        if: ${{ !cancelled() && steps.range.outcome == 'success' }}
+        uses: digio-nz/.github/.github/actions/discipline/append-only@main
+        with:
+          base: ${{ steps.pr.outputs.base }}
+          head: ${{ steps.pr.outputs.head }}
+      - name: No commit adds a credential-shaped value
+        if: ${{ !cancelled() && steps.range.outcome == 'success' }}
+        uses: digio-nz/.github/.github/actions/discipline/no-secret@main
+        with:
+          base: ${{ steps.pr.outputs.base }}
+          head: ${{ steps.pr.outputs.head }}
+      - name: Workflows parse and lint clean
+        if: ${{ !cancelled() && steps.range.outcome == 'success' }}
+        uses: digio-nz/.github/.github/actions/discipline/actionlint@main
+      - name: A user-visible change ships its docs
+        if: ${{ !cancelled() && steps.range.outcome == 'success' }}
+        uses: digio-nz/.github/.github/actions/discipline/user-docs@main
+        with:
+          base: ${{ steps.pr.outputs.base }}
+          head: ${{ steps.pr.outputs.head }}
+          ui-dirs: ${{ vars.DISCIPLINE_UI_DIRS }}
+          docs-dir: ${{ vars.DISCIPLINE_DOCS_DIR }}
+
+  labels:
+    name: Label the PR
+    if: github.repository != 'digio-nz/.github' && github.event_name == 'pull_request'
+    runs-on: ${{ vars.PROCESS_HOSTED_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - name: Read the PR live from the API
+        id: pr
+        uses: digio-nz/.github/.github/actions/discipline/read-pr@main
+      - name: Check out the commit that the event names
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.pr.outputs.head }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "*"
+      - name: Fetch the range the labeller reads
+        uses: digio-nz/.github/.github/actions/discipline/fetch-range@main
+        with:
+          base: ${{ steps.pr.outputs.base }}
+          head: ${{ steps.pr.outputs.head }}
+      - name: Label the PR (pr-labeller apply)
+        uses: digio-nz/.github/.github/actions/discipline/pr-labels-apply@main
+        with:
+          repo: ${{ github.repository }}
+          number: ${{ steps.pr.outputs.number }}
+          reader-app-id: ${{ vars.READER_APP_ID }}
+          reader-app-private-key: ${{ secrets.READER_APP_PRIVATE_KEY }}

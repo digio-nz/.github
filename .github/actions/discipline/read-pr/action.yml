@@ -1,0 +1,21 @@
+name: read-pr
+description: Read the PR live from the API
+outputs:
+  number:
+    description: PR number
+    value: ${{ steps.read.outputs.number }}
+  base:
+    description: Base SHA
+    value: ${{ steps.read.outputs.base }}
+  head:
+    description: Head SHA
+    value: ${{ steps.read.outputs.head }}
+runs:
+  using: composite
+  steps:
+    - name: Read the PR live from the API
+      id: read
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: bash "$GITHUB_ACTION_PATH/read-pr.sh"

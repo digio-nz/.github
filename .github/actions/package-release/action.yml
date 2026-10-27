@@ -1,0 +1,45 @@
+# The package release CLI as a composite action, for .github/workflows/package-release.yml.
+# Run from GITHUB_ACTION_PATH because the checkout holds the caller's package.
+# The inputs go in through env, never into the script text, so a PR title cannot inject a command.
+# A step that runs this action sets NODE_AUTH_TOKEN and GH_TOKEN for publish; the composite step inherits them.
+# path names the package folder inside the repo (default the root), for a package that lives in a subfolder.
+# The output also goes to the job summary, so a pull request's check shows the version that its merge would release.
+name: Package Release
+description: Check, plan or publish a shared @digio-nz npm package.
+inputs:
+  verb:
+    description: check, next or publish
+    required: true
+  title:
+    description: For next, a PR title that counts as a merge-commit title
+    required: false
+    default: ""
+  base:
+    description: For next, the ref that the titles are read up to (default HEAD)
+    required: false
+    default: ""
+  path:
+    description: The package folder inside the repo (default the root)
+    required: false
+    default: "."
+runs:
+  using: composite
+  steps:
+    - name: release.sh ${{ inputs.verb }}
+      shell: bash
+      env:
+        VERB: ${{ inputs.verb }}
+        TITLE: ${{ inputs.title }}
+        BASE: ${{ inputs.base }}
+        PKG: ${{ inputs.path }}
+      run: |
+        cd "$PKG"
+        args=("$VERB")
+        [ -z "$TITLE" ] || args+=(--title "$TITLE")
+        [ -z "$BASE" ] || args+=(--base "$BASE")
+        status=0
+        bash "$GITHUB_ACTION_PATH/release.sh" "${args[@]}" > "$RUNNER_TEMP/release.out" 2>&1 || status=$?
+        cat "$RUNNER_TEMP/release.out"
+        { echo "### release.sh $VERB"; echo; echo '```'; cat "$RUNNER_TEMP/release.out"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+        [ "$status" = 0 ] || echo "::error title=release.sh $VERB::release.sh $VERB exited $status; the log above names the fault"
+        exit "$status"

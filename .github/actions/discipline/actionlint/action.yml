@@ -1,0 +1,12 @@
+name: actionlint
+description: Workflows parse and lint clean
+runs:
+  using: composite
+  steps:
+    - name: Workflows parse and lint clean
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        bash "$GITHUB_ACTION_PATH/../gates.sh" actionlint .github/workflows

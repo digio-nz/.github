@@ -1,0 +1,85 @@
+# The release of a shared npm package, @digio-nz/auth-types or @digio-nz/shared-ui, as a reusable workflow.
+# A shared repo calls it from .github/workflows/release.yml, with one job named release, on pull_request, merge_group
+# and a push to main. The caller grants contents: write and packages: write; each job here lowers them to what it needs.
+# The rules are in briefs/versioning.md; .github/actions/package-release/release.sh holds them, and this file only
+# runs it, through the composite action beside it.
+#
+# plan runs on every event, with read access to the contents only: check and next read no registry. It runs
+# `release.sh check`, then `release.sh next`: the version that the merge would release, or "unchanged since v<version>".
+# It is the required check `release / plan` of each shared repo's `Required Checks` ruleset, so its job id and name stay
+# plan (release-selftest.sh holds both).
+# publish runs only on a push to main, after plan. It tags HEAD v<version>, publishes the package to GitHub Packages and
+# writes the GitHub Release (release.sh publish). Its concurrency group keeps one publish at a time for each repo:
+# GitHub keeps one pending run and cancels an older pending one, which is safe, because the next run reads every title
+# since the last tag.
+#
+# Both jobs run on GitHub, not the Mac mini: publish holds a token that can write, and a shared repo's runs must not
+# wait on the Mini's runners (templates/WORKFLOWS.md). Both check out the whole history and every tag, so next
+# sees the last tag and each first-parent title. publish keeps the checkout credentials, because it pushes the tag.
+name: Package Release
+
+on:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check Out the Package
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "*"
+      - name: Check the Package
+        uses: digio-nz/.github/.github/actions/package-release@main
+        with:
+          verb: check
+      - name: Plan the Next Version
+        uses: digio-nz/.github/.github/actions/package-release@main
+        with:
+          verb: next
+          # A pull request counts its own title, and reads the merge-commit titles up to its base branch, not its
+          # synthetic merge. A stacked pull request's base is a lower phase's branch.
+          title: ${{ github.event_name == 'pull_request' && github.event.pull_request.title || '' }}
+          base: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
+
+  publish:
+    name: publish
+    needs: plan
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      packages: write
+    concurrency:
+      group: package-release-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - name: Check Out the Package
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "*"
+          registry-url: https://npm.pkg.github.com
+          scope: "@digio-nz"
+      - name: Publish the Release
+        uses: digio-nz/.github/.github/actions/package-release@main
+        with:
+          verb: publish
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}

@@ -1,0 +1,29 @@
+name: user-docs
+description: A user-visible change ships its docs
+inputs:
+  base:
+    required: true
+  head:
+    required: true
+  ui-dirs:
+    required: false
+    default: ""
+  docs-dir:
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: A user-visible change ships its docs
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        BASE: ${{ inputs.base }}
+        HEAD: ${{ inputs.head }}
+        UI_DIRS: ${{ inputs.ui-dirs }}
+        DOCS_DIR: ${{ inputs.docs-dir }}
+      run: |
+        set -euo pipefail
+
+        read -r -a UI_DIR_ARGS <<< "$UI_DIRS"
+        bash "$GITHUB_ACTION_PATH/../gates.sh" user-docs "$BASE" "$HEAD" "$RUNNER_TEMP/pr-body.txt" "$DOCS_DIR" "${UI_DIR_ARGS[@]}"
