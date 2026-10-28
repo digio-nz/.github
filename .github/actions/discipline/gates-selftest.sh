@@ -24,24 +24,14 @@ run() {
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-# A repository with an ADR corpus, so base..head diffs are real.
+# A scratch repository, so base..head diffs are real.
 repo="$work/repo"
 mkdir -p "$repo/docs/adr" "$repo/src/components" "$repo/src/help/content"
 git -C "$repo" init -q
 git -C "$repo" config user.email gate@example.com
 git -C "$repo" config user.name "gate fixture"
-cat > "$repo/docs/adr/20260101-a-decision.md" <<'MD'
-# A decision
-
-Status: Accepted
-
-Body text that is history.
-MD
-cat > "$repo/docs/adr/README.md" <<'MD'
-# ADRs
-
-| 0007 | [A decision](20260101-a-decision.md) |
-MD
+printf '# A decision\n\nStatus: Accepted\n' > "$repo/docs/adr/20260101-a-decision.md"
+printf '# Another decision\n\nStatus: Accepted\n' > "$repo/docs/adr/20260102-another.md"
 echo "ui" > "$repo/src/components/Thing.tsx"
 echo "docs" > "$repo/src/help/content/thing.mdx"
 mkdir -p "$repo/drizzle/meta"
@@ -162,95 +152,10 @@ run 0 "user-docs: no UI directory touched" -- user-docs "$base" "$head" "$work/b
 run 3 "user-docs: an unreadable range fails closed" -- user-docs deadbeef "$head" "$work/body-plain.txt" src/help/content src/components
 reset_to_base
 
-# ── append-only ──────────────────────────────────────────────────────
-echo "an extra paragraph" >> docs/adr/20260101-a-decision.md; commit_head "edit an accepted ADR"
-run 1 "append-only: an accepted ADR's body edited" -- append-only "$base" "$head"
-reset_to_base
-
-sedi 's/^Status: Accepted/Status: Superseded by 20260202-another.md/' docs/adr/20260101-a-decision.md || exit 1; commit_head "status line only"
-run 0 "append-only: the Status line is the one permitted edit" -- append-only "$base" "$head"
-reset_to_base
-
-git rm -q docs/adr/20260101-a-decision.md; commit_head "delete an ADR"
-run 1 "append-only: an accepted ADR deleted" -- append-only "$base" "$head"
-reset_to_base
-
-cp docs/adr/20260101-a-decision.md docs/adr/20260303-new.md; commit_head "add an ADR"
-run 0 "append-only: adding a record is how the log grows" -- append-only "$base" "$head"
-reset_to_base
-
-echo "| 0009 | x |" >> docs/adr/README.md; commit_head "index edit"
-run 0 "append-only: the derived index is not a decision" -- append-only "$base" "$head"
-reset_to_base
-
-echo "an extra paragraph" >> docs/adr/20260101-a-decision.md; commit_head "licensed body edit"
-run 0 "append-only: a body edit under the licensed waiver" -- append-only "$base" "$head" "$work/body-licensed.txt"
-reset_to_base
-
-echo "an extra paragraph" >> docs/adr/20260101-a-decision.md; commit_head "licensed body edit, no reason"
-run 1 "append-only: a waiver with no reason is no waiver" -- append-only "$base" "$head" "$work/body-licensed-noreason.txt"
-reset_to_base
-
-git rm -q docs/adr/20260101-a-decision.md; commit_head "delete an ADR under waiver"
-run 1 "append-only: a deletion is never waived" -- append-only "$base" "$head" "$work/body-licensed.txt"
-reset_to_base
-
-# OKF frontmatter added to an ADR is not a body edit; the check reads the
-# diff hunks by line number. he-mobility PR #84 prepended a block to 22 ADRs.
-okf_block=$'---\ntype: ADR\ngenerated: { by: process:digio-crew, at: 2026-10-03T23:19:24Z }\n---\n\n'
-adr=docs/adr/20260101-a-decision.md
-{ printf '%s' "$okf_block"; cat "$adr"; } > "$adr.new" && mv "$adr.new" "$adr"; commit_head "prepend OKF frontmatter"
-run 0 "append-only: a complete frontmatter block prepended to an ADR with none" -- append-only "$base" "$head"
-reset_to_base
-
-{ printf -- '---\ntype: ADR\n---\n'; cat "$adr"; } > "$adr.new" && mv "$adr.new" "$adr"; commit_head "prepend frontmatter, no blank line"
-run 0 "append-only: a prepended block with no blank line after it" -- append-only "$base" "$head"
-reset_to_base
-
-{ printf '%s' "$okf_block"; cat "$adr"; } > "$adr.new" && mv "$adr.new" "$adr"
-sedi 's/^Body text that is history./Body text, rewritten./' "$adr" || exit 1; commit_head "prepend frontmatter and edit the body"
-run 1 "append-only: a frontmatter prepend plus one body line changed" -- append-only "$base" "$head"
-fm_out="$(bash "$gates" append-only "$base" "$head" 2>&1)"
-if [[ "$fm_out" == *"$adr — body edited. Only the Status line may change after acceptance"* ]]; then
-  echo "ok   append-only: a frontmatter prepend with a body edit keeps the body-edited message"; pass=$((pass + 1))
-else
-  echo "FAIL append-only: a frontmatter prepend with a body edit keeps the body-edited message: $fm_out"; fail=$((fail + 1))
-fi
-reset_to_base
-
-{ printf '%s' "$okf_block"; cat "$adr"; echo "an extra paragraph"; } > "$adr.new" && mv "$adr.new" "$adr"; commit_head "prepend frontmatter and append a line"
-run 1 "append-only: a frontmatter prepend plus a line added after the block" -- append-only "$base" "$head"
-reset_to_base
-
-{ printf '%s' "$okf_block"; sedi 's/^Status: Accepted/Status: Superseded by 20260202-another.md/' "$adr" && cat "$adr"; } > "$adr.new" && mv "$adr.new" "$adr"; commit_head "prepend frontmatter and change the status"
-run 0 "append-only: a frontmatter prepend plus the Status line" -- append-only "$base" "$head"
-reset_to_base
-
-# A block that reuses an old line as its fence takes body text into the
-# frontmatter: lines 1..K are not all added, so it is an edit.
-printf '# A decision\n\nStatus: Accepted\n\n---\n\nBody text that is history.\n' > docs/adr/20260404-rule.md; commit_head "an ADR with a horizontal rule"
-rule_base="$head"
-{ printf -- '---\ntype: ADR\n'; cat docs/adr/20260404-rule.md; } > rule.new && mv rule.new docs/adr/20260404-rule.md; commit_head "a block closed by the old rule"
-run 1 "append-only: a prepended block closed by an old body line" -- append-only "$rule_base" "$head"
-reset_to_base
-
-# An ADR that already has frontmatter may gain keys inside the block.
-{ printf -- '---\ntitle: A decision\nsidebar_position: 2\n---\n\n'; cat "$adr"; } > "$adr.new" && mv "$adr.new" "$adr"; commit_head "an ADR with frontmatter"
-fm_base="$head"
-awk '{ print } /^sidebar_position: 2$/ { print "type: ADR"; print "generated: { by: process:claude, at: 2026-10-03T23:19:24Z }" }' "$adr" > "$adr.new" && mv "$adr.new" "$adr"; commit_head "add keys to the block"
-run 0 "append-only: keys added inside an existing frontmatter block" -- append-only "$fm_base" "$head"
-git -C "$repo" reset -q --hard "$fm_base"
-
-sedi '/^sidebar_position: 2$/d' "$adr" || exit 1; commit_head "remove a frontmatter key"
-run 1 "append-only: a frontmatter key removed" -- append-only "$fm_base" "$head"
-git -C "$repo" reset -q --hard "$fm_base"
-
-sedi 's/^sidebar_position: 2$/sidebar_position: 3/' "$adr" || exit 1; commit_head "change a frontmatter value"
-run 1 "append-only: a frontmatter value changed" -- append-only "$fm_base" "$head"
-git -C "$repo" reset -q --hard "$fm_base"
-
-{ printf -- '---\ntype: ADR\n---\n\n'; cat "$adr"; } > "$adr.new" && mv "$adr.new" "$adr"; commit_head "a second block on top of the first"
-run 1 "append-only: a new block prepended above an existing one" -- append-only "$fm_base" "$head"
+# ── append-only: decision records are ordinary docs ──────────────────
+echo "a rewritten paragraph" >> docs/adr/20260101-a-decision.md
+git rm -q docs/adr/20260102-another.md; commit_head "edit one ADR and delete another"
+run 0 "append-only: an ADR edited and an ADR deleted are not findings" -- append-only "$base" "$head"
 reset_to_base
 
 # ── append-only: applied drizzle migrations ──────────────────────────

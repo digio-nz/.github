@@ -26,37 +26,20 @@
 #     deviation stays legal and stays LEGIBLE.
 #
 #   append-only <base> <head> [pr-body-file]
-#     A diff does not rewrite history: accepted ADRs (status line only).
-#     Adding OKF frontmatter is not a body edit: a complete `---` ... `---`
-#     block prepended to an ADR that had none (one blank line after it is
-#     allowed), or new keys inside its existing leading block. The check
-#     reads the diff hunks by line number. A removed line, or an added line
-#     after the block, is still an edit.
-#     The rule was stated in several places and enforced in none. A scripted
-#     citation sweep once rewrote six such files in one PR; it was caught by
-#     re-reading the diff, which is exactly the check that does not scale. The
-#     edits were individually PLAUSIBLE (they corrected genuinely stale
-#     citations), which is why prose cannot catch this class: the change looks
-#     like an improvement right up until you remember the document is history.
-#     A repo with no `docs/adr/` has nothing to match and passes.
-#
-#     The same rule covers applied drizzle migrations: an existing
+#     A diff does not rewrite an applied drizzle migration: an existing
 #     `drizzle/*.sql` or `drizzle/meta/*_snapshot.json` is never modified,
 #     deleted or renamed, and `drizzle/meta/_journal.json` may only gain
 #     entries at the end (every base entry unchanged, same order). The same
 #     holds for a `drizzle/` tree below the root (digio-invoices keeps one at
-#     `lib/db/drizzle/`). A renumbered
-#     or reissued migration once left a database ledger the tree no longer
-#     matched. New migrations, snapshots and entries stay legal; a repo with no
-#     `drizzle/` is unaffected. The waiver below covers these too, deletions
-#     included, so a genuine one-off repair stays possible with a stated reason.
+#     `lib/db/drizzle/`). A renumbered or reissued migration once left a
+#     database ledger the tree no longer matched. New migrations, snapshots
+#     and entries stay legal; a repo with no `drizzle/` is unaffected.
 #
 #     The waiver, same shape as user-docs: a PR body line
 #     `append-only: licensed — <reason>` (a plain hyphen works too; the rule
-#     is the reason, not the typography) permits body edits for that one PR —
-#     deviation stays legal and stays LEGIBLE. The reason names WHO licensed
-#     it. A deletion is never waived: a record leaves the log only by being
-#     superseded in place.
+#     is the reason, not the typography) permits the change for that one PR,
+#     deletions included, so a genuine one-off repair stays possible with a
+#     stated reason. The reason names WHO licensed it.
 #
 #   pr-title <title>
 #     The PR title matches the conventional-commit shape the fleet's merged
@@ -153,60 +136,6 @@ exempt_pr_reason() {
   echo "Dependabot PR, exempt by design."
 }
 
-# frontmatter_end: read a file on stdin and print the line number of the
-# closing fence of its leading YAML frontmatter block (line 1 is `---`, the
-# block closes at the next `---` or `...`), or 0 if it has none.
-frontmatter_end() {
-  awk '{ sub(/\r$/, "") }
-       NR == 1 { if ($0 != "---") { print 0; found = 1; exit } next }
-       $0 == "---" || $0 == "..." { print NR; found = 1; exit }
-       END { if (!found) print 0 }'
-}
-
-# adr_body_changes <base-fm-end> <head-fm-end>: read `git diff -U0` for one
-# ADR on stdin and print its changed lines (`+text` or `-text`), minus the
-# lines that only add OKF frontmatter. Line numbers come from the hunk
-# headers, so the check is by position in the diff, not by keyword:
-#   * The base had no frontmatter and the head has one ending at line K:
-#     the added lines 1..K are frontmatter, plus line K+1 when it is blank,
-#     but only if every one of lines 1..K is added. A block that takes in an
-#     old line (an old `---` rule reused as its closing fence) is not exempt.
-#   * The base had frontmatter and the head still does: added lines strictly
-#     inside the head block (2..K-1) are new keys. The base fences stay put,
-#     because the head block closes at its first fence and no added line is
-#     a fence.
-# Every removed line is printed, so a removed key is an edit, and so is any
-# added line after the block.
-adr_body_changes() {
-  awk -v bfm="$1" -v hfm="$2" '
-    /^@@ / {
-      split($2, o, ","); split($3, n, ",")
-      old = substr(o[1], 2) + 0; new = substr(n[1], 2) + 0
-      hunk = 1; next
-    }
-    !hunk { next }
-    /^-/ { lines[++count] = $0; at[count] = 0; old++; next }
-    /^\+/ {
-      lines[++count] = $0; at[count] = new
-      text = substr($0, 2); sub(/\r$/, "", text)
-      blank[count] = (text ~ /^[[:space:]]*$/)
-      if (new <= hfm) top++
-      new++; next
-    }
-    END {
-      for (i = 1; i <= count; i++) {
-        line = at[i]; fm = 0
-        if (line > 0 && hfm > 0) {
-          if (bfm == 0 && top == hfm)
-            fm = (line <= hfm) || (line == hfm + 1 && blank[i])
-          else if (bfm > 0)
-            fm = (line >= 2 && line < hfm)
-        }
-        if (!fm) print lines[i]
-      }
-    }'
-}
-
 cmd="${1:-}"; shift || true
 
 case "$cmd" in
@@ -256,13 +185,10 @@ case "$cmd" in
       && grep -qE '^[[:space:]]*append-only:[[:space:]]*licensed[[:space:]]*[—-][[:space:]]*\S' "$BODY"; then
       licensed=true
     fi
-    # --no-renames deliberately: a renamed ADR must appear under its OLD path,
-    # or "renamed away" becomes the way to edit one.
+    # --no-renames deliberately: a renamed migration must appear under its OLD
+    # path, or "renamed away" becomes the way to edit one.
     status="$(git diff --name-status --no-renames "$BASE...$HEAD" 2>/dev/null)" \
       || die3 "could not diff $BASE...$HEAD — failing closed rather than passing"
-    # `A...B` diffs from the merge base, so the ADR's old frontmatter is read there.
-    MERGE_BASE="$(git merge-base "$BASE" "$HEAD" 2>/dev/null)" \
-      || die3 "no merge base for $BASE and $HEAD — failing closed rather than passing"
 
     violations=""
     note() { violations="$violations
@@ -275,40 +201,6 @@ case "$cmd" in
       esac
 
       case "$f" in
-        # The derived index (and its mapping table) is not a decision.
-        docs/adr/README.md) continue ;;
-
-        # Date-slug ADRs: YYYYMMDD-<slug>.md (the whole corpus since the
-        # 2026-08-08 harmonisation; legacy NNNN names are gone).
-        docs/adr/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-*.md)
-          case "$st" in
-            D*) note "$f — DELETED. An accepted decision is superseded by a NEW ADR, never removed." ; continue ;;
-          esac
-          # Two changes leave the body alone: OKF frontmatter added at the top
-          # (see frontmatter_end and adr_body_changes), and the Status line.
-          # Every other changed line is an edit. `|| true` because grep -v
-          # exits 1 when everything is a status line — the CONFORMANT case —
-          # under this script's pipefail.
-          # Read whole files first: frontmatter_end stops early, and a pipe
-          # from git show would then die of SIGPIPE on a large file.
-          head_text="$(git show "$HEAD:$f" 2>/dev/null)" \
-            || die3 "could not read $f at $HEAD — failing closed rather than passing"
-          base_text="$(git show "$MERGE_BASE:$f" 2>/dev/null)" \
-            || die3 "could not read $f at $MERGE_BASE — failing closed rather than passing"
-          head_fm="$(frontmatter_end <<<"$head_text")"
-          base_fm="$(frontmatter_end <<<"$base_text")"
-          diff="$(git diff -U0 "$BASE...$HEAD" -- "$f" 2>/dev/null)" \
-            || die3 "could not diff $f in $BASE...$HEAD — failing closed rather than passing"
-          body="$(adr_body_changes "$base_fm" "$head_fm" <<<"$diff" \
-                   | grep -vE '^[+-][[:space:]]*(-[[:space:]]*)?(\*\*)?Status(\*\*)?[[:space:]]*:' || true)"
-          [ -z "$body" ] && continue
-          if [ "$licensed" = true ]; then
-            echo "::warning::$f — body edited under the PR's declared append-only license."
-            continue
-          fi
-          note "$f — body edited. Only the Status line may change after acceptance; supersede rather than edit."
-          ;;
-
         # Applied drizzle migrations: a migration file or snapshot that exists
         # at the base may be applied somewhere, so it is never modified,
         # deleted or renamed (--no-renames shows a rename as delete + add).
@@ -353,8 +245,6 @@ EOF
       exit 0
     fi
     echo "::error::this diff MODIFIES append-only records:$violations" >&2
-    echo "These documents are history, not current law — current law lives in ARCHITECTURE.md and AGENTS.md." >&2
-    echo "The supported way to change a decision is a NEW ADR that supersedes the old one." >&2
     exit 1
     ;;
 
