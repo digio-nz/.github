@@ -1,0 +1,49 @@
+name: Label the PR
+
+on:
+  workflow_call:
+    secrets:
+      READER_APP_PRIVATE_KEY:
+        required: false
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+concurrency:
+  group: pr-labels-${{ github.repository }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  labels:
+    name: Label the PR
+    if: github.event_name == 'pull_request'
+    runs-on: ${{ vars.PROCESS_HOSTED_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - name: Read the PR live from the API
+        id: pr
+        uses: digio-nz/.github/.github/actions/discipline/read-pr@main
+      - name: Check out the measured commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.pr.outputs.head }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "*"
+      - name: Fetch the measured range
+        uses: digio-nz/.github/.github/actions/discipline/fetch-range@main
+        with:
+          base: ${{ steps.pr.outputs.base }}
+          head: ${{ steps.pr.outputs.head }}
+      - name: Label the PR
+        uses: digio-nz/.github/.github/actions/discipline/pr-labels-apply@main
+        with:
+          repo: ${{ github.repository }}
+          number: ${{ steps.pr.outputs.number }}
+          reader-app-id: ${{ vars.READER_APP_ID }}
+          reader-app-private-key: ${{ secrets.READER_APP_PRIVATE_KEY }}

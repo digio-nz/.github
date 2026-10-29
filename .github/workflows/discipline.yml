@@ -4,7 +4,7 @@ name: Discipline
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, edited]
+    types: [opened, synchronize, reopened, ready_for_review, edited, labeled]
   merge_group:
 
 permissions:
@@ -82,7 +82,10 @@ jobs:
 
   labels:
     name: Label the PR
-    if: github.repository != 'digio-nz/.github' && github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && (github.event.action != 'labeled' || contains(fromJSON('["Task","Bug","Plan","Phase"]'), github.event.label.name))
+    concurrency:
+      group: pr-labels-${{ github.repository }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     runs-on: ${{ vars.PROCESS_HOSTED_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
