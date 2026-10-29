@@ -74,10 +74,13 @@
 #
 #   no-hand-version <base> <head>
 #     The diff changes no `"version"` in a package.json and no CHANGELOG.md.
+#     A package.json that is new in the diff may add one `"version": "0.0.0"`
+#     line, because `release.sh check` requires that committed version.
 #
 #   migrations <base> <head>
 #     Each new drizzle migration has a 14-digit timestamp prefix, and the diff
-#     changes no migration that is on the base.
+#     changes no migration that is on the base. A migration moved unchanged,
+#     with the same file name, into another drizzle/ folder is not new.
 #
 #   no-secret <base> <head>
 #     no-secret/secret-guard.sh passes on each commit in the range.
@@ -313,6 +316,9 @@ EOF
     fi
     manifests="$(git diff --name-only --diff-filter=d "$BASE...$HEAD" 2>/dev/null)" \
       || die3 "could not list surviving manifests for $BASE...$HEAD"
+    added="$(git diff --name-only --no-renames --diff-filter=A "$BASE...$HEAD" 2>/dev/null)" \
+      || die3 "could not list added files for $BASE...$HEAD"
+    initial_re='^\+[[:space:]]*"version"[[:space:]]*:[[:space:]]*"0\.0\.0"[[:space:]]*,?[[:space:]]*$'
     while IFS= read -r f; do
       [ -n "$f" ] || continue
       case "$f" in
@@ -321,10 +327,17 @@ EOF
       esac
       diff="$(git diff -U0 "$BASE...$HEAD" -- "$f" 2>/dev/null)" \
         || die3 "could not diff $f in $BASE...$HEAD — failing closed rather than passing"
-      if printf '%s\n' "$diff" | grep -qE '^[+-].*"version"[[:space:]]*:'; then
-        echo "::error::no-hand-version: $f changes a \"version\" field. Version files are generated." >&2
+      initial_allowed=false
+      grep -qxF -- "$f" <<<"$added" && initial_allowed=true
+      while IFS= read -r line; do
+        [[ "$line" =~ ^[+-].*\"version\"[[:space:]]*: ]] || continue
+        if [ "$initial_allowed" = true ] && [[ "$line" =~ $initial_re ]]; then
+          initial_allowed=false
+          continue
+        fi
+        echo "::error::no-hand-version: $f changes a \"version\" field: ${line}. Version files are generated." >&2
         exit 1
-      fi
+      done <<<"$diff"
     done <<<"$manifests"
     echo "no-hand-version: no hand-edited version or changelog. OK."
     exit 0
@@ -333,31 +346,47 @@ EOF
   migrations)
     BASE="${1:-}"; HEAD="${2:-}"
     [ -n "$BASE" ] && [ -n "$HEAD" ] || die3 "usage: gates.sh migrations <base> <head>"
-    status="$(git diff --name-status --no-renames "$BASE...$HEAD" 2>/dev/null)" \
+    # 100% so that only an unchanged file pairs as a rename; an edited one
+    # shows as a delete and an add.
+    status="$(git diff --name-status --find-renames=100% "$BASE...$HEAD" 2>/dev/null)" \
       || die3 "could not diff $BASE...$HEAD — failing closed rather than passing"
     violations=""
     note() { violations="$violations
   - $1"; }
-    while IFS=$'\t' read -r st f rest; do
-      [ -n "${f:-}" ] || continue
+    is_migration() {
       # Michelin's SQL samples are test inputs, not applied database records.
-      case "${GITHUB_REPOSITORY:-}:$f" in
-        digio-nz/digio-michelin:*/assets/fixture/drizzle/*.sql) continue ;;
+      case "${GITHUB_REPOSITORY:-}:$1" in
+        digio-nz/digio-michelin:*/assets/fixture/drizzle/*.sql) return 1 ;;
       esac
-      case "$f" in
-        drizzle/*.sql|*/drizzle/*.sql) ;;
-        *) continue ;;
+      case "$1" in
+        drizzle/*.sql|*/drizzle/*.sql) return 0 ;;
       esac
+      return 1
+    }
+    check_new() {
+      local ts_re='^[0-9]{14}_'
+      if [[ ! "$(basename "$1")" =~ $ts_re ]]; then
+        note "$1 — a new migration needs a 14-digit timestamp prefix"
+      fi
+    }
+    while IFS=$'\t' read -r st f to; do
+      [ -n "${f:-}" ] || continue
       case "$st" in
-        A*)
-          basef="$(basename "$f")"
-          ts_re='^[0-9]{14}_'
-          if [[ ! "$basef" =~ $ts_re ]]; then
-            note "$f — a new migration needs a 14-digit timestamp prefix"
+        R*)
+          if is_migration "$f"; then
+            if is_migration "$to" && [ "$(basename "$f")" = "$(basename "$to")" ]; then
+              continue
+            fi
+            note "$f — a migration that is on the base is never renamed or moved out of a drizzle/ folder (to $to)"
+          elif is_migration "$to"; then
+            check_new "$to"
           fi
           ;;
+        A*)
+          is_migration "$f" && check_new "$f"
+          ;;
         *)
-          note "$f — a migration that is on the base is never rewritten"
+          is_migration "$f" && note "$f — a migration that is on the base is never rewritten"
           ;;
       esac
     done <<EOF
