@@ -317,6 +317,29 @@ git reset -q --hard "$pkg_base"
 printf '# changelog\n' > CHANGELOG.md
 commit_head "changelog"
 run 1 "no-hand-version: CHANGELOG.md changed" -- no-hand-version "$pkg_base" "$head"
+git reset -q --hard "$pkg_base"
+mkdir -p lib/new
+printf '{\n  "name": "@x/new",\n  "version": "0.0.0",\n  "type": "module"\n}\n' > lib/new/package.json
+commit_head "a new package"
+run 0 "no-hand-version: a new package.json at 0.0.0" -- no-hand-version "$pkg_base" "$head"
+git reset -q --hard "$pkg_base"
+mkdir -p lib/new
+printf '{\n  "name": "@x/new",\n  "version": "0.1.0"\n}\n' > lib/new/package.json
+commit_head "a new package at a hand version"
+run 1 "no-hand-version: a new package.json at a version other than 0.0.0" -- no-hand-version "$pkg_base" "$head"
+git reset -q --hard "$pkg_base"
+mkdir -p lib/new
+printf '{\n  "name": "@x/new",\n  "version": "0.0.0",\n  "engines": {\n    "version": "0.0.0"\n  }\n}\n' > lib/new/package.json
+commit_head "a new package with a second version line"
+run 1 "no-hand-version: a new package.json adds only one 0.0.0 line" -- no-hand-version "$pkg_base" "$head"
+git reset -q --hard "$pkg_base"
+mkdir -p lib/old
+printf '{\n  "name": "@x/old"\n}\n' > lib/old/package.json
+commit_head "a package with no version"
+old_base="$head"
+printf '{\n  "name": "@x/old",\n  "version": "0.0.0"\n}\n' > lib/old/package.json
+commit_head "add 0.0.0 to a package on the base"
+run 1 "no-hand-version: a package.json on the base adds 0.0.0" -- no-hand-version "$old_base" "$head"
 reset_to_base
 
 # ── migrations ───────────────────────────────────────────────────────
@@ -338,6 +361,52 @@ reset_to_base
 
 echo "ALTER TABLE a ADD c int;" >> drizzle/0000_first.sql; commit_head "edit applied"
 run 1 "migrations: a migration on the base edited" -- migrations "$base" "$head"
+reset_to_base
+
+mkdir -p lib/schema/drizzle
+git mv lib/db/drizzle/0000_nested.sql lib/schema/drizzle/0000_nested.sql
+commit_head "move a migration unchanged"
+run 0 "migrations: a migration moved unchanged into another drizzle/ folder" -- migrations "$base" "$head"
+reset_to_base
+
+mkdir -p lib/schema/drizzle
+git mv lib/db/drizzle/0000_nested.sql lib/schema/drizzle/0000_nested.sql
+echo "ALTER TABLE n ADD c int;" >> lib/schema/drizzle/0000_nested.sql
+commit_head "move and edit a migration"
+run 1 "migrations: a migration moved and edited" -- migrations "$base" "$head"
+reset_to_base
+
+mkdir -p lib/schema/drizzle
+git mv lib/db/drizzle/0000_nested.sql lib/schema/drizzle/0000_renamed.sql
+commit_head "move and rename a migration"
+run 1 "migrations: a migration moved under a new name" -- migrations "$base" "$head"
+reset_to_base
+
+git mv drizzle/0000_first.sql drizzle/0000_renamed.sql
+commit_head "rename a migration"
+run 1 "migrations: a migration renamed in its folder" -- migrations "$base" "$head"
+reset_to_base
+
+mkdir -p archive
+git mv drizzle/0000_first.sql archive/0000_first.sql
+commit_head "move a migration out of drizzle/"
+run 1 "migrations: a migration moved out of drizzle/" -- migrations "$base" "$head"
+out="$(bash "$gates" migrations "$base" "$head" 2>&1)" || true
+if printf '%s\n' "$out" | grep -q 'drizzle/0000_first.sql'; then
+  echo "ok   migrations: names the moved file"; pass=$((pass + 1))
+else
+  echo "FAIL migrations: names the moved file"; fail=$((fail + 1))
+fi
+reset_to_base
+
+mkdir -p sql
+printf 'CREATE TABLE s (id int);\n' > sql/0009_loose.sql
+commit_head "loose SQL"
+loose_base="$head"
+mkdir -p lib/schema/drizzle
+git mv sql/0009_loose.sql lib/schema/drizzle/0009_loose.sql
+commit_head "move loose SQL into drizzle/"
+run 1 "migrations: a file moved into drizzle/ is new and needs a timestamp" -- migrations "$loose_base" "$head"
 reset_to_base
 
 reset_to_base
