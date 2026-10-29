@@ -7,6 +7,7 @@ on:
       - ".github/actions/**"
       - ".github/actionlint.yaml"
       - ".github/workflows/discipline.yml"
+      - ".github/workflows/label-pr.yml"
       - ".github/workflows/check-discipline.yml"
       - "skills.ref"
 
@@ -41,6 +42,7 @@ jobs:
         run: |
           bash .github/actions/discipline/gates-selftest.sh
           bash .github/actions/discipline/no-secret/secret-guard-selftest.sh
+          python3 .github/actions/discipline/label-coverage-selftest.py
       - name: The Discipline job runs on the Mac mini
         shell: bash
         run: bash .github/actions/discipline/selftest-workflow.sh .github/workflows/discipline.yml

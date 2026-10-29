@@ -4,7 +4,7 @@ name: Discipline
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, edited]
+    types: [opened, synchronize, reopened, ready_for_review, edited, labeled]
   merge_group:
 
 permissions:
@@ -82,7 +82,10 @@ jobs:
 
   labels:
     name: Label the PR
-    if: github.repository != 'digio-nz/.github' && github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && (github.event.action != 'labeled' || contains(fromJSON('["Task","Bug","Plan","Phase"]'), github.event.label.name))
+    concurrency:
+      group: pr-labels-${{ github.repository }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     runs-on: ${{ vars.PROCESS_HOSTED_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
@@ -105,9 +108,10 @@ jobs:
           base: ${{ steps.pr.outputs.base }}
           head: ${{ steps.pr.outputs.head }}
       - name: Label the PR (pr-labeller apply)
-        uses: digio-nz/.github/.github/actions/discipline/pr-labels-apply@main
+        uses: digio-nz/.github/.github/actions/discipline/pr-labels-apply@3b2eba919b927d587b4c1112790bcdaee0f98b31
         with:
           repo: ${{ github.repository }}
           number: ${{ steps.pr.outputs.number }}
+          skills-read-token: ${{ secrets.DIGIO_SKILLS_READ_TOKEN }}
           reader-app-id: ${{ vars.READER_APP_ID }}
           reader-app-private-key: ${{ secrets.READER_APP_PRIVATE_KEY }}
