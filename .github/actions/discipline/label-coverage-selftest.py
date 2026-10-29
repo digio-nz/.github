@@ -1,4 +1,5 @@
 import copy
+import re
 from pathlib import Path
 
 import yaml
@@ -27,7 +28,10 @@ def check(discipline, reusable):
     assert "workflow_call" in reusable["on"], "Factory repositories need a reusable labelling workflow"
     for job in [labels, reusable["jobs"]["labels"]]:
         assert job["runs-on"] == "${{ vars.PROCESS_HOSTED_RUNNER || 'ubuntu-latest' }}", "Labelling with an App key must use a hosted runner"
-        assert any(step.get("uses", "").endswith("/pr-labels-apply@main") for step in job["steps"]), "The labelling job must call pr-labeller"
+        calls = [step for step in job["steps"] if re.fullmatch(r"digio-nz/\.github/\.github/actions/discipline/pr-labels-apply@[0-9a-f]{40}", step.get("uses", ""))]
+        assert len(calls) == 1, "The labelling job must call an immutable pr-labeller revision"
+        assert calls[0].get("with", {}).get("skills-read-token") == "${{ secrets.DIGIO_SKILLS_READ_TOKEN }}", "The workflow must pass the dedicated checkout secret"
+    assert "DIGIO_SKILLS_READ_TOKEN" in reusable["on"]["workflow_call"].get("secrets", {}), "The reusable workflow must accept the checkout secret"
     return True
 
 
@@ -44,6 +48,10 @@ mutations = [
     lambda d, r: d["jobs"]["labels"].update({"if": "!github.event.pull_request.draft"}),
     lambda d, r: r["on"].pop("workflow_call"),
     lambda d, r: d["jobs"]["labels"].update(steps=[]),
+    lambda d, r: next(s for s in d["jobs"]["labels"]["steps"] if "skills-read-token" in s.get("with", {}))["with"].pop("skills-read-token"),
+    lambda d, r: next(s for s in r["jobs"]["labels"]["steps"] if "skills-read-token" in s.get("with", {}))["with"].pop("skills-read-token"),
+    lambda d, r: r["on"]["workflow_call"]["secrets"].pop("DIGIO_SKILLS_READ_TOKEN"),
+    lambda d, r: next(s for s in d["jobs"]["labels"]["steps"] if "skills-read-token" in s.get("with", {})).update(uses="digio-nz/.github/.github/actions/discipline/pr-labels-apply@main"),
 ]
 for mutate in mutations:
     d, r = copy.deepcopy(discipline), copy.deepcopy(reusable)

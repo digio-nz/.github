@@ -15,7 +15,11 @@ Bare Bug, Task, Plan and Phase label events rerun the labeller to remove legacy 
 The shared packages call `digio-nz/.github/.github/workflows/package-release.yml@main`.
 The workflow calls the package release action from this repository.
 Michelin's design-map release checks out this repository to use the same release script.
-`skills.ref` pins the skills checkout that the PR labeller uses.
+The workflows pin the labeller action to a commit; that revision's `skills.ref` pins its skills checkout.
+
+`DIGIO_SKILLS_READ_TOKEN` supplies Contents read access to `digio-skills` for checkout only.
+It does not authorize PR writes or cross-repository issue reads.
+Existing reader App credentials remain an alternative for checkout and allow cross-repository issue reads where configured.
 
 Run the offline checks:
 
