@@ -109,6 +109,7 @@ jobs:
         env:
           STEPS: ${{ toJSON(steps) }}
         run: |
+          # shellcheck disable=SC2016 # the single-quoted script is JavaScript for node, not shell
           node -e '
             const steps = JSON.parse(process.env.STEPS);
             const failed = Object.entries(steps).filter(([, s]) => s.outcome === "failure").map(([id]) => id);
