@@ -108,7 +108,7 @@ jobs:
           base: ${{ steps.pr.outputs.base }}
           head: ${{ steps.pr.outputs.head }}
       - name: Label the PR (pr-labeller apply)
-        uses: digio-nz/.github/.github/actions/discipline/pr-labels-apply@005fc659058013fc540d81c76c8b4df79cade1b4
+        uses: digio-nz/.github/.github/actions/discipline/pr-labels-apply@c958140b60c7de4679e5a56efa366465ce3c8197
         with:
           repo: ${{ github.repository }}
           number: ${{ steps.pr.outputs.number }}
