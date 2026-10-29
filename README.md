@@ -7,6 +7,7 @@ The org Discipline ruleset runs `.github/workflows/discipline.yml` on product re
 Its gates run on the Mac mini; its labeller runs on GitHub's hosted runners.
 Discipline is advisory: every gate continues on error, so a failed gate does not block the merge.
 The exception is no-secret: a commit that adds a credential-shaped value still fails Discipline and blocks the merge.
+The setup steps (read the PR, checkout, install Node, fetch the range) also block, so a broken setup shows red rather than a false pass.
 Failed gates show as warnings, in the job summary and in a sticky PR comment that each run updates.
 The labeller is not advisory; a labelling failure still fails its job.
 A Discipline run that stays queued, for example when the Mac mini is offline, still holds the merge.
