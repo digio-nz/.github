@@ -1,5 +1,10 @@
 # The org ruleset runs this workflow on product repositories.
 # The public workflow repository runs its gates through check-discipline.yml.
+# Every gate is advisory and continues on error, except no-secret, which still blocks:
+# a credential-shaped value in any commit fails Discipline and holds the merge.
+# The setup steps (read the PR, checkout, Node, fetch the range) also block, so a broken
+# setup shows red rather than a false pass.
+# Failed advisory gates show as warnings, in the job summary and in a sticky PR comment.
 name: Discipline
 
 on:
@@ -23,12 +28,14 @@ jobs:
         id: pr
         uses: digio-nz/.github/.github/actions/discipline/read-pr@main
       - name: Check out the commit that the event names
+        id: checkout
         uses: actions/checkout@v7
         with:
           ref: ${{ steps.pr.outputs.head }}
           fetch-depth: 0
           persist-credentials: false
       - name: Install Node
+        id: node
         uses: actions/setup-node@v7
         with:
           node-version: "*"
@@ -39,39 +46,54 @@ jobs:
           base: ${{ steps.pr.outputs.base }}
           head: ${{ steps.pr.outputs.head }}
       - name: The PR title is a conventional commit title
+        id: pr-title
+        continue-on-error: true
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
         uses: digio-nz/.github/.github/actions/discipline/pr-title@main
       - name: The PR carries a closing keyword or a No issue line
+        id: closing-keyword
+        continue-on-error: true
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
         uses: digio-nz/.github/.github/actions/discipline/closing-keyword@main
       - name: The diff changes no hand-edited version or changelog
+        id: no-hand-version
+        continue-on-error: true
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
         uses: digio-nz/.github/.github/actions/discipline/no-hand-version@main
         with:
           base: ${{ steps.pr.outputs.base }}
           head: ${{ steps.pr.outputs.head }}
       - name: New migrations use a 14-digit timestamp prefix
+        id: migrations
+        continue-on-error: true
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
         uses: digio-nz/.github/.github/actions/discipline/migrations@main
         with:
           base: ${{ steps.pr.outputs.base }}
           head: ${{ steps.pr.outputs.head }}
       - name: Append-only records are not rewritten
+        id: append-only
+        continue-on-error: true
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
         uses: digio-nz/.github/.github/actions/discipline/append-only@main
         with:
           base: ${{ steps.pr.outputs.base }}
           head: ${{ steps.pr.outputs.head }}
       - name: No commit adds a credential-shaped value
+        id: no-secret
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
         uses: digio-nz/.github/.github/actions/discipline/no-secret@main
         with:
           base: ${{ steps.pr.outputs.base }}
           head: ${{ steps.pr.outputs.head }}
       - name: Workflows parse and lint clean
+        id: actionlint
+        continue-on-error: true
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
         uses: digio-nz/.github/.github/actions/discipline/actionlint@main
       - name: A user-visible change ships its docs
+        id: user-docs
+        continue-on-error: true
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
         uses: digio-nz/.github/.github/actions/discipline/user-docs@main
         with:
@@ -79,6 +101,52 @@ jobs:
           head: ${{ steps.pr.outputs.head }}
           ui-dirs: ${{ vars.DISCIPLINE_UI_DIRS }}
           docs-dir: ${{ vars.DISCIPLINE_DOCS_DIR }}
+      - name: Report failed gates (non-blocking)
+        if: ${{ always() }}
+        continue-on-error: true
+        env:
+          STEPS: ${{ toJSON(steps) }}
+        run: |
+          # shellcheck disable=SC2016 # the single-quoted script is JavaScript for node, not shell
+          node -e '
+            const steps = JSON.parse(process.env.STEPS);
+            const failed = Object.entries(steps).filter(([, s]) => s.outcome === "failure").map(([id]) => id);
+            const fs = require("fs");
+            const blocking = ["pr", "checkout", "node", "range", "no-secret"];
+            const tag = (id) => blocking.includes(id) ? " (blocking)" : " (advisory)";
+            const lines = failed.length
+              ? ["### Discipline: " + failed.length + " step(s) failed", "", ...failed.map((id) => "- `" + id + "`" + tag(id)), "", "Advisory gates do not block the merge. Setup steps and no-secret do."]
+              : ["### Discipline: all gates passed"];
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+            for (const id of failed) console.log((blocking.includes(id) ? "::error" : "::warning") + " title=Discipline::Step " + id + " failed" + tag(id) + ".");
+          '
+
+      - name: Post the gate results as a sticky PR comment
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        uses: actions/github-script@v8
+        env:
+          STEPS: ${{ toJSON(steps) }}
+        with:
+          script: |
+            const marker = "<!-- discipline: advisory-report -->";
+            const steps = JSON.parse(process.env.STEPS);
+            const failed = Object.entries(steps).filter(([, s]) => s.outcome === "failure").map(([id]) => id);
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const sha = context.payload.pull_request.head.sha.slice(0, 7);
+            const blocking = ["pr", "checkout", "node", "range", "no-secret"];
+            const tag = (id) => blocking.includes(id) ? " (blocking)" : " (advisory)";
+            const body = failed.length
+              ? [marker, `### :warning: Discipline: ${failed.length} step(s) failed on ${sha}`, "", ...failed.map((id) => `- \`${id}\`${tag(id)}`), "", `Advisory gates do not block the merge; setup steps and no-secret do. Fix the failures or say why they do not apply. [Run log](${run})`].join("\n")
+              : [marker, `### :white_check_mark: Discipline: all gates passed on ${sha}`, "", `[Run log](${run})`].join("\n");
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { ...context.repo, issue_number, per_page: 100 });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            } else if (failed.length) {
+              await github.rest.issues.createComment({ ...context.repo, issue_number, body });
+            }
 
   labels:
     name: Label the PR
@@ -108,7 +176,7 @@ jobs:
           base: ${{ steps.pr.outputs.base }}
           head: ${{ steps.pr.outputs.head }}
       - name: Label the PR (pr-labeller apply)
-        uses: digio-nz/.github/.github/actions/discipline/pr-labels-apply@9a74cdaa5ade0b1c100035dd1d9cfc6c0953f514
+        uses: digio-nz/.github/.github/actions/discipline/pr-labels-apply@c958140b60c7de4679e5a56efa366465ce3c8197
         with:
           repo: ${{ github.repository }}
           number: ${{ steps.pr.outputs.number }}
