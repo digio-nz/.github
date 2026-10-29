@@ -5,6 +5,10 @@ inputs:
     required: true
   number:
     required: true
+  skills-read-token:
+    description: Token with Contents read access to digio-skills, used only for checkout
+    required: false
+    default: ""
   reader-app-id:
     description: GitHub App id of digio-reader
     required: false
@@ -35,7 +39,7 @@ runs:
       with:
         repository: digio-nz/digio-skills
         ref: ${{ steps.skills-pin.outputs.ref }}
-        token: ${{ steps.reader.outputs.token || github.token }}
+        token: ${{ inputs.skills-read-token || steps.reader.outputs.token || github.token }}
         path: .digio-skills
         persist-credentials: false
     - name: Install Skills Dependencies
