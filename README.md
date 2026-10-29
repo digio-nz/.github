@@ -5,6 +5,11 @@ GitHub uses `.github/ISSUE_TEMPLATE/` and `pull_request_template.md` when a repo
 
 The org Discipline ruleset runs `.github/workflows/discipline.yml` on product repositories.
 Its gates run on the Mac mini; its labeller runs on GitHub's hosted runners.
+Discipline is advisory: every gate continues on error, so a failed gate does not block the merge.
+The exception is no-secret: a commit that adds a credential-shaped value still fails Discipline and blocks the merge.
+Failed gates show as warnings, in the job summary and in a sticky PR comment that each run updates.
+The labeller is not advisory; a labelling failure still fails its job.
+A Discipline run that stays queued, for example when the Mac mini is offline, still holds the merge.
 This repository runs the gate self-tests on a hosted runner through `check-discipline.yml`.
 
 Michelin calls `digio-nz/.github/.github/workflows/label-pr.yml@main` to label its PRs without adding Discipline gates.
