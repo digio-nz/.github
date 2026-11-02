@@ -26,14 +26,12 @@ trap 'rm -rf "$work"' EXIT
 
 # A scratch repository, so base..head diffs are real.
 repo="$work/repo"
-mkdir -p "$repo/docs/adr" "$repo/src/components" "$repo/src/help/content"
+mkdir -p "$repo/docs/adr"
 git -C "$repo" init -q
 git -C "$repo" config user.email gate@example.com
 git -C "$repo" config user.name "gate fixture"
 printf '# A decision\n\nStatus: Accepted\n' > "$repo/docs/adr/20260101-a-decision.md"
 printf '# Another decision\n\nStatus: Accepted\n' > "$repo/docs/adr/20260102-another.md"
-echo "ui" > "$repo/src/components/Thing.tsx"
-echo "docs" > "$repo/src/help/content/thing.mdx"
 mkdir -p "$repo/drizzle/meta"
 printf 'CREATE TABLE a (id int);\n' > "$repo/drizzle/0000_first.sql"
 printf 'CREATE TABLE b (id int);\n' > "$repo/drizzle/0001_second.sql"
@@ -80,77 +78,10 @@ sedi() {
   mv "$tmp" "$file"
 }
 
-printf 'no declaration here\n' > "$work/body-plain.txt"
-printf 'user-docs: none - the change is server-side only\n' > "$work/body-hyphen.txt"
-printf 'user-docs: none — the change is server-side only\n' > "$work/body-emdash.txt"
-printf 'user-docs: none -\n' > "$work/body-noreason-dash.txt"
-printf 'user-docs: none\n' > "$work/body-noreason-bare.txt"
-printf 'Closes #41\n' > "$work/body-closes.txt"
-printf '<!-- e.g. Closes #123 -->\nCloses #\n' > "$work/body-comment-only.txt"
-printf '<!-- e.g. Closes #123 -->\nCloses #41\n<!-- unterminated\n' > "$work/body-comment-and-real.txt"
-printf 'It merged with `Closes #80` in its body.\n\n```\nFixes #81\n```\n' > "$work/body-code-only.txt"
-printf 'Quotes `Closes #80`.\n\nCloses #41\n' > "$work/body-code-and-real.txt"
 printf 'append-only: licensed — Digio, a licensed consistency sweep\n' > "$work/body-licensed.txt"
 printf 'append-only: licensed -\n' > "$work/body-licensed-noreason.txt"
 
 cd "$repo" || exit 1
-
-# ── user-docs ────────────────────────────────────────────────────────
-echo "ui changed" >> src/components/Thing.tsx; commit_head "ui only"
-run 0 "user-docs: UI touched, no docs, no declaration" -- user-docs "$base" "$head" "$work/body-plain.txt" src/help/content src/components
-run 0 "user-docs: the declaration with a hyphen is accepted" -- user-docs "$base" "$head" "$work/body-hyphen.txt" src/help/content src/components
-run 0 "user-docs: the declaration with an em dash is accepted" -- user-docs "$base" "$head" "$work/body-emdash.txt" src/help/content src/components
-run 0 "user-docs: a declaration with no reason after the dash warns" -- user-docs "$base" "$head" "$work/body-noreason-dash.txt" src/help/content src/components
-run 0 "user-docs: a declaration with no dash and no reason warns" -- user-docs "$base" "$head" "$work/body-noreason-bare.txt" src/help/content src/components
-reset_to_base
-
-# A repo that sets neither variable gets a visible warning, not a silent skip.
-echo "ui changed" >> src/components/Thing.tsx; commit_head "ui with no variables"
-docs_case() {   # docs_case <missing variable names> <docs-dir> [ui-dir...]
-  local names="$1"; shift
-  summary="$work/summary.md"; : > "$summary"
-  out="$(GITHUB_STEP_SUMMARY="$summary" bash "$gates" user-docs "$base" "$head" "$work/body-plain.txt" "$@" 2>&1)"; got=$?
-  if [ "$got" -eq 0 ] && printf '%s\n' "$out" | grep -q "::warning title=user-docs::.*$names" && grep -q "$names" "$summary"; then
-    echo "ok   user-docs: a repo without $names warns and passes"; pass=$((pass + 1))
-  else
-    echo "FAIL user-docs: a repo without $names warns and passes (exit $got)"; fail=$((fail + 1))
-    printf '%s\n' "$out" | awk '{ print "       " $0 }'
-  fi
-}
-docs_case "DISCIPLINE_UI_DIRS DISCIPLINE_DOCS_DIR" ""
-docs_case "DISCIPLINE_UI_DIRS" src/help/content
-docs_case "DISCIPLINE_DOCS_DIR" "" src/components
-out="$(bash "$gates" user-docs "$base" "$head" "$work/body-plain.txt" "" none 2>&1)"; got=$?
-if [ "$got" -eq 0 ] && ! printf '%s\n' "$out" | grep -q '::warning'; then
-  echo "ok   user-docs: DISCIPLINE_UI_DIRS none passes with no warning"; pass=$((pass + 1))
-else
-  echo "FAIL user-docs: DISCIPLINE_UI_DIRS none passes with no warning (exit $got)"; fail=$((fail + 1))
-  printf '%s\n' "$out" | awk '{ print "       " $0 }'
-fi
-reset_to_base
-
-echo "ui changed" >> src/components/Thing.tsx; echo "docs changed" >> src/help/content/thing.mdx; commit_head "ui and docs"
-run 0 "user-docs: UI and docs both touched" -- user-docs "$base" "$head" "$work/body-plain.txt" src/help/content src/components
-reset_to_base
-
-# More changed paths than a pipe holds (64 KB): a `printf | grep -q` matcher
-# under pipefail returns 141 once grep exits on its first match, and the gate
-# once read that as "no UI dirs touched". The bulk sorts after the UI file.
-echo "ui changed" >> src/components/Thing.tsx
-mkdir -p vendor/generated-client-with-a-deliberately-long-directory-name
-for i in $(seq 1 3000); do
-  : > "vendor/generated-client-with-a-deliberately-long-directory-name/generated-module-$i.ts"
-done
-commit_head "ui plus a large generated diff"
-run 0 "user-docs: UI touched in a diff larger than a pipe buffer, no docs" -- user-docs "$base" "$head" "$work/body-plain.txt" src/help/content src/components
-echo "docs changed" >> src/help/content/thing.mdx; commit_head "and the docs"
-run 0 "user-docs: UI and docs both touched in a diff larger than a pipe buffer" -- user-docs "$base" "$head" "$work/body-plain.txt" src/help/content src/components
-reset_to_base
-
-echo "server" > server.ts; commit_head "no ui"
-run 0 "user-docs: no UI directory touched" -- user-docs "$base" "$head" "$work/body-plain.txt" src/help/content src/components
-run 3 "user-docs: an unreadable range fails closed" -- user-docs deadbeef "$head" "$work/body-plain.txt" src/help/content src/components
-reset_to_base
 
 # ── append-only: decision records are ordinary docs ──────────────────
 echo "a rewritten paragraph" >> docs/adr/20260101-a-decision.md
@@ -261,27 +192,6 @@ run 1 "exempt-pr: a human branch named dependabot/ is not" -- exempt-pr dependab
 run 1 "exempt-pr: process-deploy-foo is not" -- exempt-pr process-deploy-foo someone
 run 1 "exempt-pr: an issue branch is not" -- exempt-pr fm-issue-41 digbycampbell
 run 3 "exempt-pr: no branch is a usage error" -- exempt-pr
-
-# ── closing-keyword ──────────────────────────────────────────────────
-printf 'No issue: a templates deploy\n' > "$work/body-no-issue.txt"
-run 0 "closing-keyword: a keyword in the body" -- closing-keyword "$work/body-closes.txt" my-branch
-run 1 "closing-keyword: a keyword only inside an HTML comment" -- closing-keyword "$work/body-comment-only.txt" my-branch
-run 0 "closing-keyword: a real keyword beside a commented example" -- closing-keyword "$work/body-comment-and-real.txt" my-branch
-run 1 "closing-keyword: a keyword only inside code" -- closing-keyword "$work/body-code-only.txt" my-branch
-run 0 "closing-keyword: a real keyword beside a quoted one" -- closing-keyword "$work/body-code-and-real.txt" my-branch
-PR_TITLE="chore: x" run 0 "closing-keyword: a chore title with No issue" -- closing-keyword "$work/body-no-issue.txt" chore-farm
-PR_TITLE="fix: x" run 1 "closing-keyword: a fix title with No issue" -- closing-keyword "$work/body-no-issue.txt" my-branch
-mkdir -p "$work/rt"
-printf '%s\n' 'chore(docs): a live PR title' > "$work/rt/pr-title.txt"
-PR_TITLE="fix: x" RUNNER_TEMP="$work/rt" run 1 "closing-keyword: a fix title with No issue ignores RUNNER_TEMP title" -- closing-keyword "$work/body-no-issue.txt" my-branch
-printf '%s\n' '<!--' 'No issue: hidden' '-->' > "$work/body-no-issue-comment.txt"
-PR_TITLE="chore: x" run 1 "closing-keyword: No issue only inside an HTML comment" -- closing-keyword "$work/body-no-issue-comment.txt" chore-farm
-unset PR_TITLE
-run 1 "closing-keyword: neither" -- closing-keyword "$work/body-plain.txt" my-branch
-run 1 "closing-keyword: process-deploy is not exempt" -- closing-keyword "$work/body-plain.txt" process-deploy
-run 0 "closing-keyword: a Dependabot branch with the Dependabot author is exempt" -- closing-keyword "$work/body-plain.txt" dependabot/npm/x "dependabot[bot]"
-run 1 "closing-keyword: a Dependabot branch with a human author is NOT exempt" -- closing-keyword "$work/body-plain.txt" dependabot/npm/x some-human
-run 3 "closing-keyword: no body file at all fails closed" -- closing-keyword "$work/absent.txt" my-branch
 
 mkdir -p "$work/label-bin"
 cat > "$work/label-bin/node" <<'NODE'
@@ -501,18 +411,6 @@ install_case 3 "actionlint-install: a checksum mismatch fails and installs nothi
 release 9.9.7; : > "$rel/actionlint_9.9.7_checksums.txt"
 install_case 3 "actionlint-install: a checksums file without the asset fails" v9.9.7 "does not match the checksums file" no-binary
 install_case 3 "actionlint-install: a release that cannot download fails" v0.0.1 "cannot download v0.0.1" no-binary
-
-# ── warning annotations ──────────────────────────────────────────────
-echo "ui changed" >> src/components/Thing.tsx; commit_head "ui only for warning"
-summary="$work/summary.md"; : > "$summary"
-out="$(GITHUB_STEP_SUMMARY="$summary" bash "$gates" user-docs "$base" "$head" "$work/body-plain.txt" src/help/content src/components 2>&1)" || true
-if printf '%s\n' "$out" | grep -q '::warning title=user-docs::' && grep -q 'user-docs:' "$summary"; then
-  echo "ok   user-docs: warning and summary line"; pass=$((pass + 1))
-else
-  echo "FAIL user-docs: warning and summary line"; fail=$((fail + 1))
-  printf '%s\n' "$out"
-fi
-reset_to_base
 
 # ── read-pr merge_group ──────────────────────────────────────────────
 mkdir -p "$work/bin"

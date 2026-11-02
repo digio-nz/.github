@@ -50,11 +50,6 @@ jobs:
         continue-on-error: true
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
         uses: digio-nz/.github/.github/actions/discipline/pr-title@main
-      - name: The PR carries a closing keyword or a No issue line
-        id: closing-keyword
-        continue-on-error: true
-        if: ${{ !cancelled() && steps.range.outcome == 'success' }}
-        uses: digio-nz/.github/.github/actions/discipline/closing-keyword@main
       - name: The diff changes no hand-edited version or changelog
         id: no-hand-version
         continue-on-error: true
@@ -91,16 +86,6 @@ jobs:
         continue-on-error: true
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
         uses: digio-nz/.github/.github/actions/discipline/actionlint@main
-      - name: A user-visible change ships its docs
-        id: user-docs
-        continue-on-error: true
-        if: ${{ !cancelled() && steps.range.outcome == 'success' }}
-        uses: digio-nz/.github/.github/actions/discipline/user-docs@main
-        with:
-          base: ${{ steps.pr.outputs.base }}
-          head: ${{ steps.pr.outputs.head }}
-          ui-dirs: ${{ vars.DISCIPLINE_UI_DIRS }}
-          docs-dir: ${{ vars.DISCIPLINE_DOCS_DIR }}
       - name: Report failed gates (non-blocking)
         if: ${{ always() }}
         continue-on-error: true

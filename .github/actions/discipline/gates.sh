@@ -12,18 +12,7 @@
 # added here is not proven by this sentence until it has cases there.
 #
 # Nothing in this file names a repo, a directory or a convention that is one
-# repo's. What varies per repo — which directories are user-facing, and where
-# its user docs live — is passed in by the workflow from Actions variables.
-#
-#   user-docs <base> <head> <pr-body-file> <docs-dir> [ui-dir...]
-#     A diff touching the UI dirs either touches the user-docs dir, or the PR
-#     body declares `user-docs: none — <reason>`. An empty docs dir or no UI
-#     dir warns that the repo does not set DISCIPLINE_DOCS_DIR or
-#     DISCIPLINE_UI_DIRS. The one UI dir `none` passes: the repo has no UI. The same-PR docs rule was
-#     designed as an executable edge and shipped as optional prose in a
-#     "delete the rest" block — an opinion nothing runs, which is exactly what
-#     a gate must not be. The declaration is the fail-closed-but-cheap shape:
-#     deviation stays legal and stays LEGIBLE.
+# repo's.
 #
 #   append-only <base> <head> [pr-body-file]
 #     A diff does not rewrite an applied drizzle migration: an existing
@@ -35,11 +24,11 @@
 #     database ledger the tree no longer matched. New migrations, snapshots
 #     and entries stay legal; a repo with no `drizzle/` is unaffected.
 #
-#     The waiver, same shape as user-docs: a PR body line
-#     `append-only: licensed — <reason>` (a plain hyphen works too; the rule
-#     is the reason, not the typography) permits the change for that one PR,
-#     deletions included, so a genuine one-off repair stays possible with a
-#     stated reason. The reason names WHO licensed it.
+#     The waiver: a PR body line `append-only: licensed — <reason>` (a plain
+#     hyphen works too; the rule is the reason, not the typography) permits
+#     the change for that one PR, deletions included, so a genuine one-off
+#     repair stays possible with a stated reason. The reason names WHO
+#     licensed it.
 #
 #   pr-title <title>
 #     The PR title matches the conventional-commit shape the fleet's merged
@@ -48,20 +37,13 @@
 #     refused. SHAPE only, never an enumerated type vocabulary a legitimate
 #     new type (`revert`, `style`, ...) could fall outside of.
 #
-#   closing-keyword <pr-body-file> <branch> [author]
-#     The body, outside HTML comments, has a closing keyword (`Closes #<n>`,
-#     `Fixes`, `Resolves`, or the cross-repo `owner/name#<n>` form). Or the
-#     title is a `chore` title and the body has the line `No issue: <reason>`.
-#     `is_exempt_pr` exempts a genuine Dependabot PR (see below).
-#
-# closing-keyword (and Dependabot exemptions on pr-title) share
-# `is_exempt_pr`, which recognises one provenance:
+# Dependabot exemptions on pr-title share `is_exempt_pr`, which recognises
+# one provenance:
 #   - a head branch starting `dependabot/` AND a PR author login of
-#     `dependabot[bot]` is a dependency-bump PR with no issue to carry a
-#     keyword. BOTH conditions are required — a human-authored
-#     branch merely named `dependabot/...` is not exempt — because the
-#     branch name alone is attacker- or author-controlled and proves nothing
-#     on its own.
+#     `dependabot[bot]` is a dependency-bump PR. BOTH conditions are
+#     required — a human-authored branch merely named `dependabot/...` is
+#     not exempt — because the branch name alone is attacker- or
+#     author-controlled and proves nothing on its own.
 #
 #   exempt-pr <branch> [author]
 #     Exit 0 when `is_exempt_pr` (below) says the PR is exempt, 1 when not.
@@ -95,12 +77,8 @@
 #     read, it exits 3. A checksum mismatch exits 3.
 #
 # The gates that judge the PR's CONTENT rather than its provenance — pr-title,
-# append-only, user-docs, plus the actionlint and selftest steps in
-# discipline.yml — keep running on a Dependabot PR, which can still get those
-# wrong.
-#
-# user-docs warns and passes: each finding is a `::warning::` annotation and a
-# line in the job summary, and the gate exits 0.
+# append-only, plus the actionlint and selftest steps in discipline.yml —
+# keep running on a Dependabot PR, which can still get those wrong.
 #
 # Exit: 0 pass · 1 violation · 3 could not determine (always failing, never a
 # silent pass — an unreadable diff is the case where skipping is dangerous).
@@ -110,22 +88,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 die3() { echo "::error::$*" >&2; exit 3; }
 
-warn_pass() {
-  local gate="$1" finding="$2"
-  echo "::warning title=${gate}::${finding}"
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-    printf -- '- %s: %s\n' "$gate" "$finding" >> "$GITHUB_STEP_SUMMARY"
-  fi
-  exit 0
-}
-
-# One provenance has no work item to carry a closing keyword:
+# One provenance is exempt from pr-title shape:
 # a genuine Dependabot PR (head branch starting `dependabot/` AND author login
 # `dependabot[bot]` — BOTH required, so a human branch merely named
-# `dependabot/...` still fails). closing-keyword exempts through this one
-# predicate rather than re-deriving the check; a gate whose content that PR
-# could still get wrong (pr-title, actionlint, append-only, user-docs) keeps
-# running on it.
+# `dependabot/...` still fails). pr-title exempts through this one predicate
+# rather than re-deriving the check; a gate whose content that PR could still
+# get wrong (actionlint, append-only) keeps running on it.
 is_exempt_pr() {
   local branch="${1:-}" author="${2:-}"
   case "$branch" in
@@ -142,37 +110,6 @@ exempt_pr_reason() {
 cmd="${1:-}"; shift || true
 
 case "$cmd" in
-  user-docs)
-    [ "$#" -ge 4 ] || die3 "usage: gates.sh user-docs <base> <head> <pr-body-file> <docs-dir> [ui-dir...]"
-    BASE="$1"; HEAD="$2"; BODY="$3"; DOCS="$4"; shift 4
-    [ -n "$BASE" ] && [ -n "$HEAD" ] || die3 "usage: gates.sh user-docs <base> <head> <pr-body-file> <docs-dir> [ui-dir...]"
-    if [ "$*" = none ]; then echo "user-docs: DISCIPLINE_UI_DIRS is none, so the repo has no UI dirs. OK."; exit 0; fi
-    missing=()
-    [ "$#" -gt 0 ] || missing+=(DISCIPLINE_UI_DIRS)
-    [ -n "$DOCS" ] || missing+=(DISCIPLINE_DOCS_DIR)
-    if [ "${#missing[@]}" -gt 0 ]; then
-      warn_pass user-docs "the repo does not set the Actions variable ${missing[*]}, so this gate cannot check that a UI change ships its docs. Set DISCIPLINE_UI_DIRS and DISCIPLINE_DOCS_DIR, or set DISCIPLINE_UI_DIRS to none."
-    fi
-    changed="$(git diff --name-only "$BASE...$HEAD" 2>/dev/null)" \
-      || die3 "could not diff $BASE...$HEAD — failing closed rather than passing"
-    # Here-strings, not `printf | grep -q`: grep -q exits on its first match,
-    # and once the list outgrows a pipe buffer printf dies of SIGPIPE and
-    # pipefail reports 141 for a match.
-    touched_ui=false
-    for d in "$@"; do
-      grep -q "^${d%/}/" <<<"$changed" && touched_ui=true
-    done
-    if [ "$touched_ui" != true ]; then echo "user-docs: no UI dirs touched."; exit 0; fi
-    if grep -q "^${DOCS%/}/" <<<"$changed"; then
-      echo "user-docs: UI and user docs both touched. OK."; exit 0
-    fi
-    # An em dash OR a plain hyphen: the rule is the reason, not the typography.
-    if [ -f "$BODY" ] && grep -qE '^[[:space:]]*user-docs:[[:space:]]*none[[:space:]]*[—-][[:space:]]*\S' "$BODY"; then
-      echo "user-docs: UI touched, no docs, and the PR body declares why. OK."; exit 0
-    fi
-    warn_pass user-docs "this diff touches the UI dirs ($*) but not $DOCS. Update the user docs in this PR, or put a line 'user-docs: none — <reason>' in the PR body."
-    ;;
-
   append-only)
     BASE="${1:-}"; HEAD="${2:-}"; BODY="${3:-}"
     if [ -n "$BASE" ] && [ -n "$HEAD" ]; then
@@ -182,7 +119,7 @@ case "$cmd" in
     fi
 
     # The waiver: a licensed one-PR exception, declared in the PR body with a
-    # reason. An em dash OR a plain hyphen, as with user-docs.
+    # reason. An em dash OR a plain hyphen.
     licensed=false
     if [ -n "$BODY" ] && [ -f "$BODY" ] \
       && grep -qE '^[[:space:]]*append-only:[[:space:]]*licensed[[:space:]]*[—-][[:space:]]*\S' "$BODY"; then
@@ -263,36 +200,6 @@ EOF
       exit 0
     fi
     echo "::error::pr-title: \"$TITLE\" does not match \`type(scope): description\` or \`type: description\` (lowercase type, optional !, space after the colon). A P<n> or #<n> prefix is not allowed." >&2
-    exit 1
-    ;;
-
-  closing-keyword)
-    BODY="${1:-}"; BRANCH="${2:-}"; AUTHOR="${3:-}"
-    if [ -n "$BODY" ] && [ -n "$BRANCH" ]; then
-      :
-    else
-      die3 "usage: discipline-gates.sh closing-keyword <pr-body-file> <branch> [author]"
-    fi
-    [ -f "$BODY" ] || die3 "no such PR-body file: $BODY"
-
-    # HTML comments, code blocks and code spans close nothing on GitHub; the
-    # template's own guidance once held a `Closes #<n>` example that passed
-    # this gate for a body naming no issue. An unterminated comment or code
-    # block hides to the end, as GitHub renders it.
-    body_text="$(perl -0777 -pe 's/<!--.*?(?:-->|\z)//gs; s/^ {0,3}(`{3,}|~{3,}).*?(?:^ {0,3}\1[^\n]*$|\z)//gms; s/(`+)(?!`).+?(?<!`)\1(?!`)//gs' "$BODY")"
-    if grep -qiE '\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)[[:space:]]+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#|#)[0-9]+' <<<"$body_text"; then
-      echo "closing-keyword: body carries a closing keyword. OK."; exit 0
-    fi
-    if is_exempt_pr "$BRANCH" "$AUTHOR"; then
-      echo "closing-keyword: $(exempt_pr_reason "$BRANCH") OK."; exit 0
-    fi
-    title="${PR_TITLE:-}"
-    [ -n "$title" ] || title="$(cat "${RUNNER_TEMP:-}/pr-title.txt" 2>/dev/null || true)"
-    chore_re='^chore(\(|:|!)'
-    if [[ "$title" =~ $chore_re ]] && grep -qE '^No issue:[[:space:]]+\S' <<<"$body_text"; then
-      echo "closing-keyword: chore title with a No issue line. OK."; exit 0
-    fi
-    echo "::error::closing-keyword: no closing keyword in the PR body. Add \`Closes #<n>\`, or a chore title with the line \`No issue: <reason>\`." >&2
     exit 1
     ;;
 
@@ -492,5 +399,5 @@ EOF
     node --experimental-strip-types "${DIGIO_SKILLS_ROOT:-$HOME/.digio/skills}/skills/pr-labeller/scripts/pr-labeller.ts" "${label_args[@]}"
     ;;
 
-  *) die3 "usage: gates.sh [user-docs|append-only|pr-title|closing-keyword|pr-labels-apply|exempt-pr|no-hand-version|migrations|no-secret|actionlint|actionlint-install] ..." ;;
+  *) die3 "usage: gates.sh [append-only|pr-title|pr-labels-apply|exempt-pr|no-hand-version|migrations|no-secret|actionlint|actionlint-install] ..." ;;
 esac
