@@ -4,7 +4,6 @@ set -uo pipefail
 file="${1:-}"
 [ -f "$file" ] || { echo "selftest-workflow: no file ${file:-<none>}" >&2; exit 2; }
 mini='[self-hosted, digio-orchestration]'
-toggle="\${{ vars.PROCESS_HOSTED_RUNNER || 'ubuntu-latest' }}"
 bad=0
 on_mini=0
 while IFS= read -r line || [ -n "$line" ]; do
@@ -16,8 +15,8 @@ while IFS= read -r line || [ -n "$line" ]; do
       value="${value%"${value##*[![:space:]]}"}"
       if [ "$value" = "$mini" ]; then
         on_mini=1
-      elif [ "$value" != "ubuntu-latest" ] && [ "$value" != "$toggle" ]; then
-        echo "selftest-workflow: runs-on must be $mini, ubuntu-latest or $toggle; found: $value" >&2
+      elif [ "$value" != "ubuntu-latest" ]; then
+        echo "selftest-workflow: runs-on must be $mini or literal ubuntu-latest; found: $value" >&2
         bad=1
       fi
       ;;
