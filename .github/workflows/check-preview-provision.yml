@@ -1,0 +1,33 @@
+# The Preview provisioner self-test, for each pull request that touches the shared action or this workflow.
+# It uses stub APIs, so it needs no network, dependency or credential.
+name: Check Preview Provision
+
+on:
+  pull_request:
+    paths:
+      - ".github/actions/preview-provision/**"
+      - ".github/workflows/check-preview-provision.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-preview-provision-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  selftest:
+    name: Preview Provision Self-Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check Out the Repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Self-Test the Provisioner
+        run: node --test .github/actions/preview-provision/provision.test.mjs

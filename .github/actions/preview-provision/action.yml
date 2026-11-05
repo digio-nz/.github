@@ -1,0 +1,30 @@
+# The Full-tier Preview provisioner as a composite action. README.md owns the contract.
+# The step that uses this action sets GITHUB_TOKEN, NEON_PREVIEW_API_KEY and VERCEL_PREVIEW_TOKEN for apply and check.
+# Inputs go in through env, never into the script text.
+name: Preview Provision
+description: Provision a synthetic Preview database branch and an exact-SHA Preview deployment for a Full-tier product.
+inputs:
+  mode:
+    description: apply, check, export, list or test
+    required: true
+  selector:
+    description: pr:<number> or standing-preview, for apply, check and export
+    required: false
+    default: ""
+  root:
+    description: The folder that holds the product's configuration, guard, workflow and vercel.json
+    required: false
+    default: "."
+runs:
+  using: composite
+  steps:
+    - name: provision.mjs ${{ inputs.mode }}
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        SELECTOR: ${{ inputs.selector }}
+        ROOT: ${{ inputs.root }}
+      run: |
+        args=("$MODE")
+        [ -z "$SELECTOR" ] || args+=("$SELECTOR")
+        node "$GITHUB_ACTION_PATH/provision.mjs" "${args[@]}" --root "$ROOT"
