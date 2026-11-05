@@ -545,9 +545,31 @@ jobs:
     steps: [{ run: true }]
 YML
 if bash "$here/selftest-workflow.sh" "$wf" >/dev/null 2>&1; then
-  echo "ok   selftest: the Mini, ubuntu-latest and the hosted toggle pass"; pass=$((pass + 1))
+  echo "FAIL selftest: the hosted toggle must fail even beside a Mini job"; fail=$((fail + 1))
 else
-  echo "FAIL selftest: the Mini, ubuntu-latest and the hosted toggle must pass"; fail=$((fail + 1))
+  out="$(bash "$here/selftest-workflow.sh" "$wf" 2>&1)" || true
+  if printf '%s\n' "$out" | grep -q 'found:.*PROCESS_HOSTED_RUNNER'; then
+    echo "ok   selftest: the hosted toggle fails and names the expression"; pass=$((pass + 1))
+  else
+    echo "FAIL selftest: the hosted toggle refusal must name the expression"; fail=$((fail + 1))
+  fi
+fi
+
+cat > "$wf" <<'YML'
+name: Discipline
+on: push
+jobs:
+  discipline:
+    runs-on: [self-hosted, digio-orchestration]
+    steps: [{ run: true }]
+  labels:
+    runs-on: ubuntu-latest # a comment
+    steps: [{ run: true }]
+YML
+if bash "$here/selftest-workflow.sh" "$wf" >/dev/null 2>&1; then
+  echo "ok   selftest: the Mini and literal ubuntu-latest pass"; pass=$((pass + 1))
+else
+  echo "FAIL selftest: the Mini and literal ubuntu-latest must pass"; fail=$((fail + 1))
 fi
 
 if bash "$here/selftest-workflow.sh" "$work/missing.yml" >/dev/null 2>&1; then

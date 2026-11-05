@@ -139,7 +139,7 @@ jobs:
     concurrency:
       group: pr-labels-${{ github.repository }}-${{ github.event.pull_request.number }}
       cancel-in-progress: false
-    runs-on: ${{ vars.PROCESS_HOSTED_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Read the PR live from the API

@@ -27,7 +27,7 @@ def check(discipline, reusable):
     assert "draft" not in labels["if"] and "github.repository !=" not in labels["if"], "Labelling must include drafts and the workflow repository"
     assert "workflow_call" in reusable["on"], "Factory repositories need a reusable labelling workflow"
     for job in [labels, reusable["jobs"]["labels"]]:
-        assert job["runs-on"] == "${{ vars.PROCESS_HOSTED_RUNNER || 'ubuntu-latest' }}", "Labelling with an App key must use a hosted runner"
+        assert job["runs-on"] == "ubuntu-latest", "Labelling with an App key must use literal ubuntu-latest"
         calls = [step for step in job["steps"] if re.fullmatch(r"digio-nz/\.github/\.github/actions/discipline/pr-labels-apply@[0-9a-f]{40}", step.get("uses", ""))]
         assert len(calls) == 1, "The labelling job must call an immutable pr-labeller revision"
         assert calls[0].get("with", {}).get("skills-read-token") == "${{ secrets.DIGIO_SKILLS_READ_TOKEN }}", "The workflow must pass the dedicated checkout secret"
@@ -42,6 +42,8 @@ action = workflow(root / "actions/discipline/pr-labels-apply/action.yml")
 check_credentials(action)
 check(discipline, reusable)
 mutations = [
+    lambda d, r: d["jobs"]["labels"].update({"runs-on": "${{ vars.PROCESS_HOSTED_RUNNER || 'ubuntu-latest' }}"}),
+    lambda d, r: r["jobs"]["labels"].update({"runs-on": "${{ vars.PROCESS_HOSTED_RUNNER || 'ubuntu-latest' }}"}),
     lambda d, r: d["on"]["pull_request"].update(paths=["src/**"]),
     lambda d, r: d["on"]["pull_request"]["types"].remove("labeled"),
     lambda d, r: d["jobs"]["labels"].update(needs="discipline"),

@@ -21,7 +21,7 @@ jobs:
   labels:
     name: Label the PR
     if: github.event_name == 'pull_request'
-    runs-on: ${{ vars.PROCESS_HOSTED_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Read the PR live from the API
