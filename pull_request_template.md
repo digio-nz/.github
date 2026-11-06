@@ -3,7 +3,11 @@
 
 ## What
 
-<!-- Target: about 3 lines. One paragraph a non-engineer can read: what changed and why. -->
+<!-- Target: about 3 lines. One paragraph a non-engineer can read: what changed. -->
+
+## Why
+
+<!-- Target: one or two lines. Why this change exists. Link the issue when there is one. -->
 
 ## Decisions
 

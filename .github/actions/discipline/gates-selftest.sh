@@ -173,6 +173,28 @@ commit_head "add a nested migration and journal entry"
 run 0 "append-only: a new nested migration and journal entry is legal" -- append-only "$base" "$head"
 reset_to_base
 
+# ── pr-sections ──────
+sections="$(mktemp -d)"
+printf '## What\n\nx\n\n## Why\n\nBecause.\n\n## Decisions\n\nNone\n' > "$sections/good.md"
+printf '## What\n\nx\n\n## Decisions\n\nNone\n' > "$sections/no-why.md"
+printf '## Why\n\nBecause.\n' > "$sections/no-decisions.md"
+printf '## Why\n\n<!-- Target: one line. -->\n\n## Decisions\n\n<!-- Target -->\n' > "$sections/template.md"
+printf '## Why\n\n## Decisions\n\nNone\n' > "$sections/empty-why.md"
+printf '<!-- ## Why\n\ntext -->\n\n## Decisions\n\nNone\n' > "$sections/commented-why.md"
+printf '## Why\r\n\r\nBecause.\r\n\r\n## Decisions\r\n\r\nNone\r\n' > "$sections/crlf.md"
+: > "$sections/blank.md"
+run 0 "pr-sections: both have text" -- pr-sections "$sections/good.md"
+run 0 "pr-sections: CRLF body from the GitHub UI" -- pr-sections "$sections/crlf.md"
+run 1 "pr-sections: no Why" -- pr-sections "$sections/no-why.md"
+run 1 "pr-sections: no Decisions" -- pr-sections "$sections/no-decisions.md"
+run 1 "pr-sections: the untouched template" -- pr-sections "$sections/template.md"
+run 1 "pr-sections: an empty Why" -- pr-sections "$sections/empty-why.md"
+run 1 "pr-sections: a commented-out Why" -- pr-sections "$sections/commented-why.md"
+run 1 "pr-sections: an empty body" -- pr-sections "$sections/blank.md"
+run 0 "pr-sections: Dependabot is exempt" -- pr-sections "$sections/no-why.md" "dependabot[bot]" "dependabot/npm_and_yarn/x"
+run 1 "pr-sections: a person on a dependabot branch is not exempt" -- pr-sections "$sections/no-why.md" "digbycampbell" "dependabot/npm_and_yarn/x"
+run 3 "pr-sections: a missing file is a usage fault" -- pr-sections "$sections/none.md"
+
 # ── pr-title ─────────────────────────────────────────────────────────
 run 0 "pr-title: type(scope): description" -- pr-title "fix(board): stop minting labels"
 run 0 "pr-title: type: description" -- pr-title "docs: name the enforcement"

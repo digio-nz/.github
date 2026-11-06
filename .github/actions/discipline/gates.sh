@@ -30,6 +30,8 @@
 #     repair stays possible with a stated reason. The reason names WHO
 #     licensed it.
 #
+#   pr-sections <body-file> [author] [branch]
+#     The PR body has text under `## Why` and `## Decisions`. Template comments do not count.
 #   pr-title <title>
 #     The PR title matches the conventional-commit shape the fleet's merged
 #     history uses (`type(scope): description` or `type: description`,
@@ -200,6 +202,29 @@ EOF
       exit 0
     fi
     echo "::error::pr-title: \"$TITLE\" does not match \`type(scope): description\` or \`type: description\` (lowercase type, optional !, space after the colon). A P<n> or #<n> prefix is not allowed." >&2
+    exit 1
+    ;;
+
+  pr-sections)
+    BODY_FILE="${1:-}"; AUTHOR="${2:-}"; BRANCH="${3:-}"
+    [ -f "$BODY_FILE" ] || die3 "usage: gates.sh pr-sections <body-file> [author] [branch]"
+    if is_exempt_pr "${BRANCH:-}" "${AUTHOR:-}"; then
+      echo "pr-sections: $(exempt_pr_reason "${BRANCH:-}") OK."; exit 0
+    fi
+    missing="$(python3 - "$BODY_FILE" <<'PY'
+import re, sys
+body = open(sys.argv[1], encoding="utf-8").read().replace("\r\n", "\n")
+body = re.sub(r"<!--.*?-->", "", body, flags=re.S)
+parts = re.split(r"(?m)^## +(.+?)[ \t]*$", body)
+sections = dict(zip(parts[1::2], parts[2::2]))
+print(" ".join(s for s in ("Why", "Decisions") if not sections.get(s, "").strip()))
+PY
+)" || die3 "pr-sections: could not read $BODY_FILE"
+    if [ -z "$missing" ]; then
+      echo "pr-sections: Why and Decisions both have text. OK."
+      exit 0
+    fi
+    echo "::error::pr-sections: the PR body needs text under these headings: $missing"
     exit 1
     ;;
 
@@ -399,5 +424,5 @@ EOF
     node --experimental-strip-types "${DIGIO_SKILLS_ROOT:-$HOME/.digio/skills}/skills/pr-labeller/scripts/pr-labeller.ts" "${label_args[@]}"
     ;;
 
-  *) die3 "usage: gates.sh [append-only|pr-title|pr-labels-apply|exempt-pr|no-hand-version|migrations|no-secret|actionlint|actionlint-install] ..." ;;
+  *) die3 "usage: gates.sh [append-only|pr-sections|pr-title|pr-labels-apply|exempt-pr|no-hand-version|migrations|no-secret|actionlint|actionlint-install] ..." ;;
 esac
