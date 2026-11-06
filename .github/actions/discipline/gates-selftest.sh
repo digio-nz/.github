@@ -497,79 +497,84 @@ else
   echo "ok   selftest: an expression runs-on fails"; pass=$((pass + 1))
 fi
 
+PIN=0123456789abcdef0123456789abcdef01234567
+
 cat > "$wf" <<'YML'
+name: Discipline
+on: push
+jobs:
+  discipline:
+    runs-on: [self-hosted, digio-orchestration]
+    steps: [{ run: true }]
+YML
+if out="$(bash "$here/selftest-workflow.sh" "$wf" 2>&1)"; then
+  echo "FAIL selftest: the Mac mini runner must fail"; fail=$((fail + 1))
+elif printf '%s\n' "$out" | grep -q 'found:.*digio-orchestration'; then
+  echo "ok   selftest: the Mac mini runner fails and is named"; pass=$((pass + 1))
+else
+  echo "FAIL selftest: the Mac mini refusal must name the runner"; fail=$((fail + 1))
+fi
+
+cat > "$wf" <<'YML'
+name: Discipline
+on: push
+jobs:
+  labels:
+    runs-on: ${{ vars.PROCESS_HOSTED_RUNNER || 'ubuntu-latest' }}
+    steps: [{ run: true }]
+YML
+if out="$(bash "$here/selftest-workflow.sh" "$wf" 2>&1)"; then
+  echo "FAIL selftest: the hosted toggle must fail"; fail=$((fail + 1))
+elif printf '%s\n' "$out" | grep -q 'found:.*PROCESS_HOSTED_RUNNER'; then
+  echo "ok   selftest: the hosted toggle fails and names the expression"; pass=$((pass + 1))
+else
+  echo "FAIL selftest: the hosted toggle refusal must name the expression"; fail=$((fail + 1))
+fi
+
+for unpinned in digio-nz/.github/.github/actions/discipline/read-pr@main actions/checkout@v7 actions/checkout; do
+  cat > "$wf" <<YML
 name: Discipline
 on: push
 jobs:
   discipline:
     runs-on: ubuntu-latest
-    steps: [{ run: true }]
+    steps:
+      - uses: $unpinned
 YML
-if bash "$here/selftest-workflow.sh" "$wf" >/dev/null 2>&1; then
-  echo "FAIL selftest: no job on the Mac mini must fail"; fail=$((fail + 1))
-else
-  out="$(bash "$here/selftest-workflow.sh" "$wf" 2>&1)" || true
-  if printf '%s\n' "$out" | grep -q 'Mac mini'; then
-    echo "ok   selftest: no job on the Mac mini fails"; pass=$((pass + 1))
+  if out="$(bash "$here/selftest-workflow.sh" "$wf" 2>&1)"; then
+    echo "FAIL selftest: $unpinned must fail"; fail=$((fail + 1))
+  elif printf '%s\n' "$out" | grep -q "found: $unpinned"; then
+    echo "ok   selftest: $unpinned fails and is named"; pass=$((pass + 1))
   else
-    echo "FAIL selftest: no job on the Mac mini names the Mac mini"; fail=$((fail + 1))
+    echo "FAIL selftest: the refusal must name $unpinned"; fail=$((fail + 1))
   fi
-fi
+done
 
-cat > "$wf" <<'YML'
+cat > "$wf" <<YML
 name: Discipline
 on: push
 jobs:
   discipline:
-    runs-on: [self-hosted, digio-orchestration, macos-arm64]
-    steps: [{ run: true }]
-YML
-if bash "$here/selftest-workflow.sh" "$wf" >/dev/null 2>&1; then
-  echo "FAIL selftest: macos-arm64 in the Mini labels must fail"; fail=$((fail + 1))
-else
-  echo "ok   selftest: macos-arm64 in the Mini labels fails"; pass=$((pass + 1))
-fi
-
-cat > "$wf" <<'YML'
-name: Discipline
-on: push
-jobs:
-  discipline:
-    runs-on: [self-hosted, digio-orchestration]
-    steps: [{ run: true }]
-  labels:
-    runs-on: ${{ vars.PROCESS_HOSTED_RUNNER || 'ubuntu-latest' }}
-    steps: [{ run: true }]
-  other:
     runs-on: ubuntu-latest # a comment
-    steps: [{ run: true }]
+    steps:
+      - uses: actions/checkout@$PIN # v7
+      - uses: ./.github/actions/local
 YML
 if bash "$here/selftest-workflow.sh" "$wf" >/dev/null 2>&1; then
-  echo "FAIL selftest: the hosted toggle must fail even beside a Mini job"; fail=$((fail + 1))
+  echo "ok   selftest: hosted jobs with pinned actions pass"; pass=$((pass + 1))
 else
-  out="$(bash "$here/selftest-workflow.sh" "$wf" 2>&1)" || true
-  if printf '%s\n' "$out" | grep -q 'found:.*PROCESS_HOSTED_RUNNER'; then
-    echo "ok   selftest: the hosted toggle fails and names the expression"; pass=$((pass + 1))
-  else
-    echo "FAIL selftest: the hosted toggle refusal must name the expression"; fail=$((fail + 1))
-  fi
+  echo "FAIL selftest: hosted jobs with pinned actions must pass"; fail=$((fail + 1))
 fi
 
 cat > "$wf" <<'YML'
 name: Discipline
 on: push
-jobs:
-  discipline:
-    runs-on: [self-hosted, digio-orchestration]
-    steps: [{ run: true }]
-  labels:
-    runs-on: ubuntu-latest # a comment
-    steps: [{ run: true }]
+jobs: {}
 YML
 if bash "$here/selftest-workflow.sh" "$wf" >/dev/null 2>&1; then
-  echo "ok   selftest: the Mini and literal ubuntu-latest pass"; pass=$((pass + 1))
+  echo "FAIL selftest: a workflow with no job must fail"; fail=$((fail + 1))
 else
-  echo "FAIL selftest: the Mini and literal ubuntu-latest must pass"; fail=$((fail + 1))
+  echo "ok   selftest: a workflow with no job fails"; pass=$((pass + 1))
 fi
 
 if bash "$here/selftest-workflow.sh" "$work/missing.yml" >/dev/null 2>&1; then

@@ -21,27 +21,27 @@ jobs:
   discipline:
     name: Discipline
     if: github.repository != 'digio-nz/.github' && (github.event_name == 'merge_group' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, digio-orchestration]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Read the PR live from the API
         id: pr
-        uses: digio-nz/.github/.github/actions/discipline/read-pr@main
+        uses: digio-nz/.github/.github/actions/discipline/read-pr@51916cfe2253db2cfe5a6cf9a024fde18e1dd58a
       - name: Check out the commit that the event names
         id: checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ steps.pr.outputs.head }}
           fetch-depth: 0
           persist-credentials: false
       - name: Install Node
         id: node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "*"
       - name: Fetch the range the gates read
         id: range
-        uses: digio-nz/.github/.github/actions/discipline/fetch-range@main
+        uses: digio-nz/.github/.github/actions/discipline/fetch-range@51916cfe2253db2cfe5a6cf9a024fde18e1dd58a
         with:
           base: ${{ steps.pr.outputs.base }}
           head: ${{ steps.pr.outputs.head }}
@@ -49,12 +49,12 @@ jobs:
         id: pr-title
         continue-on-error: true
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
-        uses: digio-nz/.github/.github/actions/discipline/pr-title@main
+        uses: digio-nz/.github/.github/actions/discipline/pr-title@51916cfe2253db2cfe5a6cf9a024fde18e1dd58a
       - name: The diff changes no hand-edited version or changelog
         id: no-hand-version
         continue-on-error: true
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
-        uses: digio-nz/.github/.github/actions/discipline/no-hand-version@main
+        uses: digio-nz/.github/.github/actions/discipline/no-hand-version@51916cfe2253db2cfe5a6cf9a024fde18e1dd58a
         with:
           base: ${{ steps.pr.outputs.base }}
           head: ${{ steps.pr.outputs.head }}
@@ -62,7 +62,7 @@ jobs:
         id: migrations
         continue-on-error: true
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
-        uses: digio-nz/.github/.github/actions/discipline/migrations@main
+        uses: digio-nz/.github/.github/actions/discipline/migrations@51916cfe2253db2cfe5a6cf9a024fde18e1dd58a
         with:
           base: ${{ steps.pr.outputs.base }}
           head: ${{ steps.pr.outputs.head }}
@@ -70,14 +70,14 @@ jobs:
         id: append-only
         continue-on-error: true
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
-        uses: digio-nz/.github/.github/actions/discipline/append-only@main
+        uses: digio-nz/.github/.github/actions/discipline/append-only@51916cfe2253db2cfe5a6cf9a024fde18e1dd58a
         with:
           base: ${{ steps.pr.outputs.base }}
           head: ${{ steps.pr.outputs.head }}
       - name: No commit adds a credential-shaped value
         id: no-secret
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
-        uses: digio-nz/.github/.github/actions/discipline/no-secret@main
+        uses: digio-nz/.github/.github/actions/discipline/no-secret@51916cfe2253db2cfe5a6cf9a024fde18e1dd58a
         with:
           base: ${{ steps.pr.outputs.base }}
           head: ${{ steps.pr.outputs.head }}
@@ -85,7 +85,7 @@ jobs:
         id: actionlint
         continue-on-error: true
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
-        uses: digio-nz/.github/.github/actions/discipline/actionlint@main
+        uses: digio-nz/.github/.github/actions/discipline/actionlint@51916cfe2253db2cfe5a6cf9a024fde18e1dd58a
       - name: Report failed gates (non-blocking)
         if: ${{ always() }}
         continue-on-error: true
@@ -109,7 +109,7 @@ jobs:
       - name: Post the gate results as a sticky PR comment
         if: ${{ always() && github.event_name == 'pull_request' }}
         continue-on-error: true
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           STEPS: ${{ toJSON(steps) }}
         with:
@@ -144,19 +144,19 @@ jobs:
     steps:
       - name: Read the PR live from the API
         id: pr
-        uses: digio-nz/.github/.github/actions/discipline/read-pr@main
+        uses: digio-nz/.github/.github/actions/discipline/read-pr@51916cfe2253db2cfe5a6cf9a024fde18e1dd58a
       - name: Check out the commit that the event names
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ steps.pr.outputs.head }}
           fetch-depth: 0
           persist-credentials: false
       - name: Install Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "*"
       - name: Fetch the range the labeller reads
-        uses: digio-nz/.github/.github/actions/discipline/fetch-range@main
+        uses: digio-nz/.github/.github/actions/discipline/fetch-range@51916cfe2253db2cfe5a6cf9a024fde18e1dd58a
         with:
           base: ${{ steps.pr.outputs.base }}
           head: ${{ steps.pr.outputs.head }}
