@@ -50,6 +50,11 @@ jobs:
         continue-on-error: true
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
         uses: digio-nz/.github/.github/actions/discipline/pr-title@51916cfe2253db2cfe5a6cf9a024fde18e1dd58a
+      - name: The PR body explains why and records decisions
+        id: pr-sections
+        continue-on-error: true
+        if: ${{ !cancelled() && steps.range.outcome == 'success' }}
+        uses: digio-nz/.github/.github/actions/discipline/pr-sections@7e1b4d3ee24666235426aec23b396a87964bea9e
       - name: The diff changes no hand-edited version or changelog
         id: no-hand-version
         continue-on-error: true

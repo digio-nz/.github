@@ -1,0 +1,12 @@
+name: pr-sections
+description: The PR body explains why, and records its decisions
+runs:
+  using: composite
+  steps:
+    - name: The PR body explains why, and records its decisions
+      shell: bash
+      run: |
+        set -euo pipefail
+        author="$(jq -r '.user.login // ""' < "$RUNNER_TEMP/pr.json")"
+        branch="$(jq -r '.head.ref // ""' < "$RUNNER_TEMP/pr.json")"
+        bash "$GITHUB_ACTION_PATH/../gates.sh" pr-sections "$RUNNER_TEMP/pr-body.txt" "$author" "$branch"
