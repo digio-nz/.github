@@ -1,0 +1,37 @@
+// The Codespace and the dev container at a desk: the prebuilt workbench image, which image builds.
+// The image's devcontainer.metadata label carries the settings of its features, so this file names no feature.
+{
+  "name": "digio-factory",
+  "image": "ghcr.io/digio-nz/workbench:2026.11.02-2-release",
+  "runArgs": ["--device=/dev/net/tun"],
+  "remoteUser": "vscode",
+  "containerEnv": {
+    "WORKBENCH": "1",
+    // Non-interactive bash (bash -c, agents, ssh commands) reads this file; post-create.sh writes it.
+    "BASH_ENV": "/home/vscode/.digio/node-auth-token.sh"
+  },
+  "postCreateCommand": "bash image/scripts/post-create.sh",
+  "postStartCommand": "bash image/scripts/post-start.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-azuretools.vscode-docker",
+        "github.vscode-github-actions",
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint"
+      ]
+    },
+    "codespaces": {
+      "openFiles": ["README.md"],
+      "repositories": {
+        "digio-nz/*": { "permissions": "read-all" },
+        // Write on the repos that configure the factory; workers in sandboxes take the product repos.
+        // This Codespace's own repo has write by default.
+        "digio-nz/digio-os": { "permissions": { "contents": "read", "issues": "write", "pull_requests": "write" } },
+        "digio-nz/digio-notes": { "permissions": { "contents": "write", "pull_requests": "write" } },
+        "digio-nz/dotfiles": { "permissions": { "contents": "write", "pull_requests": "write" } }
+      }
+    }
+  },
+  "hostRequirements": { "cpus": 4, "memory": "8gb", "storage": "32gb" }
+}

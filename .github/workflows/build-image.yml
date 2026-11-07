@@ -1,0 +1,272 @@
+# The Build image workflow: the one workbench image, from image, for each worker sandbox, each Codespace,
+# each dev container at a desk and each local run. It builds each Monday and on demand, never on push, so a commit does
+# not change everyone's environment.
+#
+# The build job builds both architectures and pushes only the version tag, and it holds no
+# secret but GITHUB_TOKEN. The publish job holds the Vercel credentials, so it runs on GitHub's runner: it checks the
+# layers, copies the linux/amd64 build to Vercel's registry (VCR), waits for Ready, boots a sandbox from the tag, and only
+# then moves latest in both registries. A trial moves no latest, and a run from a ref other than main is a trial. So
+# latest always names a build of main that passed the check.
+#
+# Credentials: GITHUB_TOKEN (contents: write for the git tag, packages: write for the image); id-token: write for the VCR
+# login, so the push stores no Vercel token. The Vercel team OIDC policy trusts this workflow
+# on main only, with the audience https://github.com/digio-nz, for the digio-sandbox project; so only a run of main
+# publishes, and a run of another branch builds and self-tests only; OP_RELEASE_SERVICE_ACCOUNT_TOKEN, an Actions secret, loads VERCEL_TOKEN
+# from the factory-ci-release Environment for the sandbox check only; DIGIO_SKILLS_READ_TOKEN, an organisation secret, checks out digio-skills. The
+# variables VERCEL_TEAM_ID and VERCEL_PROJECT_ID name the team and the digio-sandbox project; they are ids, not secrets.
+name: Build image
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        # Each choice has linux/amd64: the publish job checks and copies that build, and VCR takes no other.
+        description: "Architectures to build"
+        type: choice
+        default: linux/amd64,linux/arm64
+        options:
+          - linux/amd64,linux/arm64
+          - linux/amd64
+      type:
+        description: "release moves latest; trial does not"
+        type: choice
+        default: release
+        options:
+          - release
+          - trial
+
+# Runs wait in turn: a cancel between the two latest moves would leave the registries on different digests.
+concurrency:
+  group: build-image
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  IMAGE: ghcr.io/digio-nz/workbench
+  # VCR names an image by the team and project slugs; the login and the wait take the ids from the variables.
+  VCR_IMAGE: vcr.vercel.com/digbycampbells-projects/digio-sandbox/workbench
+
+jobs:
+  skills:
+    name: Image Skills
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Read the Skills Pin
+        id: skills-pin
+        shell: bash
+        run: echo "ref=$(cat image/skills.ref)" >> "$GITHUB_OUTPUT"
+      - name: Check Out Skills
+        uses: actions/checkout@v7
+        with:
+          repository: digio-nz/digio-skills
+          ref: ${{ steps.skills-pin.outputs.ref }}
+          token: ${{ secrets.DIGIO_SKILLS_READ_TOKEN }}
+          path: .digio-skills
+          persist-credentials: false
+      - name: Set the Skills Root
+        shell: bash
+        run: echo "DIGIO_SKILLS_ROOT=$GITHUB_WORKSPACE/.digio-skills" >> "$GITHUB_ENV"
+      - name: Upload Skills
+        uses: actions/upload-artifact@v7
+        with:
+          name: image-skills
+          path: .digio-skills
+          include-hidden-files: true
+  build:
+    name: Build
+    needs: skills
+    runs-on: ubuntu-latest
+    # A healthy two-architecture build takes under half an hour; past this the job fails instead of running for hours.
+    timeout-minutes: 90
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      type: ${{ steps.tag.outputs.type }}
+    steps:
+      # The hosted runner's disk filled during the two-architecture build ("No space left on device", digio-workbench run
+      # 37809163243). Remove the preinstalled toolchains this build never uses: about 30 GB.
+      - name: Free Disk Space on the Hosted Runner
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune --all --force >/dev/null
+          df -h /
+      - name: Check Out
+        uses: actions/checkout@v7
+        with:
+          # The version counts the day's tags, so the tags must be here.
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Download Skills
+        uses: actions/download-artifact@v8
+        with:
+          name: image-skills
+          path: .digio-skills
+      - name: Stage the SkillPort Requirements
+        shell: bash
+        run: |
+          mkdir -p image/.build
+          cp .digio-skills/requirements.txt image/.build/skillport-requirements.txt
+          rm -rf image/.build/michelin-hooks
+          cp -a hooks image/.build/michelin-hooks
+          test -r image/.build/michelin-hooks/pre-push/secret-guard.sh
+          test -x image/.build/michelin-hooks/shims/pre-push
+      # A bad list fails before a build.
+      - name: Lint the Tool List
+        shell: bash
+        run: bash image/scripts/tools.sh lint
+      # The version is YYYY.MM.DD-N-type. The git tag is made first, so a number is never used twice.
+      # Only main can make a release or a weekly build: a run from another ref is a trial, and moves no latest.
+      - name: Tag the Version
+        id: tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TYPE: ${{ inputs.type || 'weekly' }}
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ] && [ "$TYPE" != trial ]; then
+            echo "type: $TYPE from $GITHUB_REF is a trial; only main moves latest" | tee -a "$GITHUB_STEP_SUMMARY"
+            TYPE=trial
+          fi
+          day="$(date -u +%Y.%m.%d)"
+          n=$(( $(git tag --list "$day-*" | wc -l) + 1 ))
+          version="$day-$n-$TYPE"
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$version" -f "sha=$GITHUB_SHA" >/dev/null
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "type=$TYPE" >> "$GITHUB_OUTPUT"
+          echo "version: $version" >> "$GITHUB_STEP_SUMMARY"
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # The devcontainer CLI bakes the features from devcontainer.json into the image; a plain docker build would not.
+      # Only the version tag is pushed here; the publish job moves latest after the sandbox check.
+      - uses: devcontainers/ci@v0.3
+        env:
+          TOOLS_REFRESH: ${{ github.run_id }}
+        with:
+          configFile: image/assets/image/devcontainer.json
+          imageName: ghcr.io/digio-nz/workbench
+          imageTag: ${{ steps.tag.outputs.version }}
+          platform: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
+          push: always
+          cacheFrom: ghcr.io/digio-nz/workbench:latest
+          runCmd: DIGIO_SKILLS_ROOT="$PWD/.digio-skills" DIGIO_MICHELIN_ROOT="$PWD" bash image/scripts/image-selftest.sh
+
+  publish:
+    name: Publish
+    needs: build
+    # The OIDC policy trusts main only (header).
+    if: github.ref == 'refs/heads/main'
+    # It loads VERCEL_SANDBOX_TOKEN, so it runs on GitHub's runner.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      TYPE: ${{ needs.build.outputs.type }}
+    steps:
+      - name: Check Out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Read the Skills Pin
+        id: skills-pin
+        shell: bash
+        run: echo "ref=$(cat image/skills.ref)" >> "$GITHUB_OUTPUT"
+      - name: Check Out Skills
+        uses: actions/checkout@v7
+        with:
+          repository: digio-nz/digio-skills
+          ref: ${{ steps.skills-pin.outputs.ref }}
+          token: ${{ secrets.DIGIO_SKILLS_READ_TOKEN }}
+          path: .digio-skills
+          persist-credentials: false
+      - name: Set the Skills Root
+        shell: bash
+        run: echo "DIGIO_SKILLS_ROOT=$GITHUB_WORKSPACE/.digio-skills" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # VCR refuses a compressed layer over 2 GB; this names the layer before a push that would fail.
+      - name: Check the Layers
+        shell: bash
+        run: |
+          out="$(bash image/scripts/workbench-image.sh layers --tag "$VERSION" 2>&1)" && status=0 || status=$?
+          echo "$out"
+          { echo '### Layers of the linux/amd64 build'; echo '```'; echo "$out"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+      - name: Log In to VCR
+        uses: vercel/vcr-action/login@v1
+        with:
+          team: ${{ vars.VERCEL_TEAM_ID }}
+          audience: https://github.com/digio-nz
+      # A sandbox takes a custom image only from VCR, and only its linux/amd64 build.
+      - name: Push the linux/amd64 Build to VCR
+        shell: bash
+        run: |
+          docker pull --platform linux/amd64 "$IMAGE:$VERSION"
+          docker tag "$IMAGE:$VERSION" "$VCR_IMAGE:$VERSION"
+          docker push "$VCR_IMAGE:$VERSION"
+          echo "vcr: $VCR_IMAGE:$VERSION" >> "$GITHUB_STEP_SUMMARY"
+      # VCR serves an image to a sandbox only after it shows Ready.
+      - name: Wait for Ready
+        uses: vercel/vcr-action/wait-for-optimized-image@v1
+        with:
+          image: ${{ env.VCR_IMAGE }}:${{ env.VERSION }}
+          timeout-seconds: 1800
+          audience: https://github.com/digio-nz
+      - name: Install the Vercel CLI
+        shell: bash
+        run: npm install -g --no-audit --no-fund vercel@latest
+      - name: Install the 1Password CLI
+        uses: 1password/install-cli-action@f800e0b6b8e9a137ed2c585f54cd68182ca83e7b # v4.1.0
+      # The sandbox check: the user, the home, and tools.sh check --scope image --latest. A missing or stale tool fails.
+      - name: Boot a Sandbox and Check the Tools
+        shell: bash
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_RELEASE_SERVICE_ACCOUNT_TOKEN }}
+          DIGIO_SANDBOX_TEAM: ${{ vars.VERCEL_TEAM_ID }}
+          DIGIO_SANDBOX_PROJECT: ${{ vars.VERCEL_PROJECT_ID }}
+          # The factory-ci-release Environment holds VERCEL_TOKEN.
+          FACTORY_ENVIRONMENT: 2pqov3ulytdkre5dx6su2zm3gm
+        run: |
+          out="$(op run --environment "$FACTORY_ENVIRONMENT" -- bash image/scripts/workbench-image.sh check --tag "$VERSION" 2>&1)" && status=0 || status=$?
+          echo "$out"
+          { echo '### Sandbox check'; echo '```'; echo "$out"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+      - name: Move latest in Both Registries
+        if: env.TYPE != 'trial' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          docker buildx imagetools create --tag "$IMAGE:latest" "$IMAGE:$VERSION"
+          docker tag "$VCR_IMAGE:$VERSION" "$VCR_IMAGE:latest"
+          docker push "$VCR_IMAGE:latest"
+          echo "latest: $VERSION in both registries" >> "$GITHUB_STEP_SUMMARY"
+      - name: Wait for latest to Be Ready
+        if: env.TYPE != 'trial' && github.ref == 'refs/heads/main'
+        uses: vercel/vcr-action/wait-for-optimized-image@v1
+        with:
+          image: ${{ env.VCR_IMAGE }}:latest
+          timeout-seconds: 1800
+          audience: https://github.com/digio-nz
+      - name: Record a Trial
+        if: env.TYPE == 'trial' || github.ref != 'refs/heads/main'
+        shell: bash
+        run: |
+          echo "latest: not moved; $VERSION is a trial" >> "$GITHUB_STEP_SUMMARY"

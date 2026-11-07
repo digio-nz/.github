@@ -1,0 +1,81 @@
+name: Check Workspace
+on:
+  pull_request:
+    paths: ["image/**", "hooks/**", "lib/**", ".github/workflows/check-workspace.yml", ".github/workflows/build-image.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  host:
+    name: Host Helper (${{ matrix.os }})
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - name: Check Out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Self-Test lib/host.sh
+        shell: bash
+        run: |
+          echo "runner: $(uname -sm), $(bash --version | head -1)"
+          status=0
+          out="$(bash lib/host-selftest.sh 2>&1)" || status=$?
+          echo "$out"
+          if [ "$status" -ne 0 ]; then
+            while IFS= read -r line; do
+              case "$line" in FAIL*) echo "::error title=host helper on ${{ matrix.os }}::$line" ;; esac
+            done <<<"$out"
+            exit 1
+          fi
+
+  workspace:
+    name: Image and Installer
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check Out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Read the Skills Pin
+        id: skills-pin
+        shell: bash
+        run: echo "ref=$(cat image/skills.ref)" >> "$GITHUB_OUTPUT"
+      - name: Check Out Skills
+        uses: actions/checkout@v7
+        with:
+          repository: digio-nz/digio-skills
+          ref: ${{ steps.skills-pin.outputs.ref }}
+          token: ${{ secrets.DIGIO_SKILLS_READ_TOKEN }}
+          path: .digio-skills
+          persist-credentials: false
+      - name: Set the Skills Root
+        shell: bash
+        run: echo "DIGIO_SKILLS_ROOT=$GITHUB_WORKSPACE/.digio-skills" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "*"
+      - name: Check Image Scripts
+        shell: bash
+        env:
+          DIGIO_MICHELIN_ROOT: ${{ github.workspace }}
+        run: bash image/scripts/workbench-image.sh test
+      - name: Check the Git Hooks
+        shell: bash
+        run: |
+          bash hooks/pre-push/secret-guard-selftest.sh
+          bash hooks/commit-msg/strip-agent-trailers-selftest.sh
+          bash hooks/run-selftest.sh
+      - name: Check npm Authentication Setup
+        shell: bash
+        run: bash image/scripts/npm-auth-selftest.sh
+      - name: Check the Installer
+        shell: bash
+        run: bash image/scripts/workbench-start-selftest.sh
