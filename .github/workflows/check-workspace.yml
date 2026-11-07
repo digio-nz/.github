@@ -44,14 +44,6 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Create the Skills Reader Token
-        id: skills-reader
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.READER_APP_ID }}
-          private-key: ${{ secrets.READER_APP_PRIVATE_KEY }}
-          owner: digio-nz
-          permission-contents: read
       - name: Read the Skills Pin
         id: skills-pin
         shell: bash
@@ -61,7 +53,7 @@ jobs:
         with:
           repository: digio-nz/digio-skills
           ref: ${{ steps.skills-pin.outputs.ref }}
-          token: ${{ steps.skills-reader.outputs.token }}
+          token: ${{ secrets.DIGIO_SKILLS_READ_TOKEN }}
           path: .digio-skills
           persist-credentials: false
       - name: Set the Skills Root

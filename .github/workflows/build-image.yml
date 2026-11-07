@@ -11,7 +11,8 @@
 # Credentials: GITHUB_TOKEN (contents: write for the git tag, packages: write for the image); id-token: write for the VCR
 # login, so the push stores no Vercel token. The Vercel team OIDC policy trusts this workflow
 # on main only, with the audience https://github.com/digio-nz, for the digio-sandbox project; so only a run of main
-# publishes, and a run of another branch builds and self-tests only; VERCEL_SANDBOX_TOKEN, an Actions secret, for the sandbox check only. The
+# publishes, and a run of another branch builds and self-tests only; OP_RELEASE_SERVICE_ACCOUNT_TOKEN, an Actions secret, loads VERCEL_TOKEN
+# from the factory-ci-release Environment for the sandbox check only; DIGIO_SKILLS_READ_TOKEN, an organisation secret, checks out digio-skills. The
 # variables VERCEL_TEAM_ID and VERCEL_PROJECT_ID name the team and the digio-sandbox project; they are ids, not secrets.
 name: Build image
 
@@ -57,14 +58,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Create the Skills Reader Token
-        id: skills-reader
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.READER_APP_ID }}
-          private-key: ${{ secrets.READER_APP_PRIVATE_KEY }}
-          owner: digio-nz
-          permission-contents: read
       - name: Read the Skills Pin
         id: skills-pin
         shell: bash
@@ -74,7 +67,7 @@ jobs:
         with:
           repository: digio-nz/digio-skills
           ref: ${{ steps.skills-pin.outputs.ref }}
-          token: ${{ steps.skills-reader.outputs.token }}
+          token: ${{ secrets.DIGIO_SKILLS_READ_TOKEN }}
           path: .digio-skills
           persist-credentials: false
       - name: Set the Skills Root
@@ -174,7 +167,7 @@ jobs:
     needs: build
     # The OIDC policy trusts main only (header).
     if: github.ref == 'refs/heads/main'
-    # It holds VERCEL_SANDBOX_TOKEN, so it runs on GitHub's runner.
+    # It loads VERCEL_SANDBOX_TOKEN, so it runs on GitHub's runner.
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -189,14 +182,6 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Create the Skills Reader Token
-        id: skills-reader
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.READER_APP_ID }}
-          private-key: ${{ secrets.READER_APP_PRIVATE_KEY }}
-          owner: digio-nz
-          permission-contents: read
       - name: Read the Skills Pin
         id: skills-pin
         shell: bash
@@ -206,7 +191,7 @@ jobs:
         with:
           repository: digio-nz/digio-skills
           ref: ${{ steps.skills-pin.outputs.ref }}
-          token: ${{ steps.skills-reader.outputs.token }}
+          token: ${{ secrets.DIGIO_SKILLS_READ_TOKEN }}
           path: .digio-skills
           persist-credentials: false
       - name: Set the Skills Root
@@ -249,15 +234,19 @@ jobs:
       - name: Install the Vercel CLI
         shell: bash
         run: npm install -g --no-audit --no-fund vercel@latest
+      - name: Install the 1Password CLI
+        uses: 1password/install-cli-action@f800e0b6b8e9a137ed2c585f54cd68182ca83e7b # v4.1.0
       # The sandbox check: the user, the home, and tools.sh check --scope image --latest. A missing or stale tool fails.
       - name: Boot a Sandbox and Check the Tools
         shell: bash
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_SANDBOX_TOKEN }}
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_RELEASE_SERVICE_ACCOUNT_TOKEN }}
           DIGIO_SANDBOX_TEAM: ${{ vars.VERCEL_TEAM_ID }}
           DIGIO_SANDBOX_PROJECT: ${{ vars.VERCEL_PROJECT_ID }}
+          # The factory-ci-release Environment holds VERCEL_TOKEN.
+          FACTORY_ENVIRONMENT: 2pqov3ulytdkre5dx6su2zm3gm
         run: |
-          out="$(bash image/scripts/workbench-image.sh check --tag "$VERSION" 2>&1)" && status=0 || status=$?
+          out="$(op run --environment "$FACTORY_ENVIRONMENT" -- bash image/scripts/workbench-image.sh check --tag "$VERSION" 2>&1)" && status=0 || status=$?
           echo "$out"
           { echo '### Sandbox check'; echo '```'; echo "$out"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
