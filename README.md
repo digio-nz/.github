@@ -12,6 +12,10 @@ Failed gates show as warnings, in the job summary and in a sticky PR comment tha
 The labeller is not advisory; a labelling failure still fails its job.
 This repository runs the gate self-tests on a hosted runner through `check-discipline.yml`.
 
+`image/` holds the workbench image: every dev container and worker sandbox runs it, and `build-image.yml` builds it.
+Its tools are in `image/references/tools.tsv`, and `image/skills.ref` pins the skills it checks against.
+`hooks/` and `lib/` are what the image bakes in or sources. `check-workspace.yml` tests all three.
+
 Michelin calls `digio-nz/.github/.github/workflows/label-pr.yml@main` to label its PRs without adding Discipline gates.
 Digio-skills runs its trusted main-branch labeller directly through its local `label-pr.yml`.
 Labelling includes draft PRs and has no path filter.

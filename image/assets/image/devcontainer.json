@@ -1,0 +1,19 @@
+// The workbench image's build: the Build image workflow and `workbench-image.sh build` build it with the devcontainer
+// CLI, so the features below are baked into the image. The context is image/, so the Dockerfile copies
+// references/tools.tsv and scripts/tools.sh. Each feature has a row in tools.tsv, and `tools.sh lint` holds the two together.
+{
+  "name": "workbench",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "../..",
+    "args": { "TOOLS_REFRESH": "${localEnv:TOOLS_REFRESH}" }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    // Keep sshd on port 2222 for VS Code and `gh codespace ssh`; Tailscale SSH serves port 22.
+    "ghcr.io/devcontainers/features/sshd:1": {},
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+    "ghcr.io/tailscale/codespace/tailscale:1": {}
+  },
+  "remoteUser": "vscode"
+}

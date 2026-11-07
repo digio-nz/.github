@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+if [ -d /run/systemd/system ]; then
+    if [ ! -x /bin/systemctl ]; then
+        echo "systemctl: /bin/systemctl is missing" >&2
+        exit 1
+    fi
+    exec /bin/systemctl "$@"
+fi
+
+echo "systemctl: systemd is not running" >&2
+exit 1
