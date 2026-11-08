@@ -67,8 +67,10 @@ digio-michelin's devcontainer config and the image's `CMD` run them from a digio
 
 - The dev container runs `scripts/post-create.sh` once after it creates the container.
   It clones digio-michelin to `~/.digio/michelin` and sets up the npm auth lines with `npm-auth.sh` and `node-auth-token.sh`, the same two scripts a physical machine runs.
+  Where `DIGIO_HISTORY_DATABASE_URL` is unset, it writes `DATABASE_URL` to `~/devs/digio-history/.env.local` from `op://orchestrator/DIGIO_HISTORY_DATABASE_URL/credential`, once, if that file is missing. It prints a `WARN:` line when `op` cannot read the value.
 - `scripts/post-start.sh` runs next, and at each start after that.
-  It joins the tailnet, pulls digio-michelin, clones or pulls `~/devs/digio-skills`, and configures public `skillport-mcp` with the workbench categories in digio-skills `consumers.tsv`.
+  It joins the tailnet, sets the global Git identity to `digbycampbell` with `96467498+digbycampbell@users.noreply.github.com` when none is set, pulls digio-michelin, clones or pulls `~/devs/digio-skills`, and configures public `skillport-mcp` with the workbench categories in digio-skills `consumers.tsv`.
+  It prints a `WARN:` line when `~/.digio/michelin` is missing, has local changes or is behind `origin/main`, because the briefs then stay stale. A warning does not fail the start.
   It also writes the briefs, installs the skill dependencies, installs the session export hook, and starts the session export sweep.
   It does not start the HumanLayer daemon.
   To make the workbench an online HumanLayer host, run `humanlayer login`, then `humanlayer-daemon.sh start`.
@@ -80,7 +82,7 @@ On msi, `/workspaces/devs` is the host's `/data/devs`, and the home is a named v
 So a change to the start-up scripts, to the briefs in digio-michelin or to digio-skills reaches a workbench at its next start, with no rebuild.
 At start, the digio-skills importer, `lib/skillport-sets.py`, imports the third-party sets into namespaces under the skills checkout.
 SkillPort keeps only `skill-search` in each harness's native skills folder.
-The session export needs the `DIGIO_HISTORY_DATABASE_URL` secret; `post-start.sh` says so when it is missing.
+The session export needs the `DIGIO_HISTORY_DATABASE_URL` secret or `~/devs/digio-history/.env.local`; `post-start.sh` prints a `WARN:` line when it has neither.
 The sweep loop runs `session-export-sweep.sh once` every 15 minutes, the entrypoint a physical machine's timer runs too.
 It writes its log to `${XDG_STATE_HOME:-$HOME/.local/state}/digio-workbench/session-export-sweep.log`.
 
