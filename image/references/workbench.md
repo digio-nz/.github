@@ -11,8 +11,8 @@ GitHub Codespaces, VS Code, Cursor, T3 Code and the devcontainer CLI all read th
 
 | Host | Engine | When |
 | --- | --- | --- |
-| Windows (msi) | Docker Desktop over WSL2 | at the desk |
-| Mac | OrbStack or Docker Desktop | at the desk, once the Mac is the main machine |
+| Ubuntu (msi) | Docker Engine, from dotfiles `fleet/workbench` | always on: the T3 workbench |
+| Mac | OrbStack or Docker Desktop | by hand only; the Macs are not agent environments |
 | GitHub Codespaces | GitHub's VM | away from the desk, or for a clean instance |
 | Vercel Sandbox | Vercel's microVM, from the `linux/amd64` copy in VCR | each worker job |
 
