@@ -30,6 +30,7 @@ for tool in node pnpm gh npm; do
   printf '#!/usr/bin/env bash\n[ "${1:-}" = auth ] && exit 1\necho stub-%s\n' "$tool" > "$TEST_DIR/bin/$tool"
   chmod +x "$TEST_DIR/bin/$tool"
 done
+printf '#!/usr/bin/env bash\necho "npm $*" >> "$CALLS"\n' > "$TEST_DIR/bin/npm"
 cat > "$TEST_DIR/bin/git" <<'STUB'
 #!/usr/bin/env bash
 echo "git $*" >> "$CALLS"
@@ -61,7 +62,9 @@ done
 touch "$TEST_DIR/skills-template/package.json"
 chmod +x "$TEST_DIR/bin/"* "$TEST_DIR/skills-template/skills/"*/scripts/*.sh
 export PATH="$TEST_DIR/bin:$PATH" CALLS="$TEST_DIR/calls" CLONE_SOURCE="$TEST_DIR/skills-template"
-unset DIGIO_SKILLS_ROOT CLAUDE_CONFIG_DIR
+unset DIGIO_SKILLS_ROOT CLAUDE_CONFIG_DIR CODESPACES CODESPACE_VSCODE_FOLDER
+# A Codespace or workbench running this test has a real /workspaces; a case that wants one passes its own.
+export DIGIO_WORKSPACES="$TEST_DIR/no-workspaces"
 
 fixture_home() {
   local home="$TEST_DIR/home-$1"
@@ -139,6 +142,8 @@ home="$(fixture_home devs-fresh)"; ws="$TEST_DIR/ws-fresh"; mkdir -p "$ws"
 start_with_workspaces "$home" "$ws" || fail "post-start failed with a workspace disk: $(cat "$TEST_DIR/out")"
 [ "$(readlink "$home/devs")" = "$ws/devs" ] || fail "post-start did not link ~/devs to the workspace devs folder"
 [ -d "$ws/devs/digio-skills" ] || fail "digio-skills did not land in the workspace devs folder"
+grep -q "^npm install --prefix $ws/devs/digio-skills " "$CALLS" \
+  || fail "post-start installed through the ~/devs link, not the real path: $(grep '^npm' "$CALLS")"
 ! grep -q "insteadOf" "$CALLS" || fail "post-start routed git over HTTPS outside a Codespace"
 
 home="$(fixture_home devs-move)"; ws="$TEST_DIR/ws-move"; mkdir -p "$ws" "$home/devs"
@@ -191,4 +196,54 @@ home="$(fixture_home logins-elsewhere)"; ws="$TEST_DIR/ws-logins-elsewhere"; mkd
 if CODESPACES=true start_with_workspaces "$home" "$ws"; then fail "post-start exited 0 when ~/.codex linked elsewhere"; fi
 grep -Fq "links to $TEST_DIR/codex-other, not $ws/.home/codex" "$TEST_DIR/out" || fail "post-start did not name the wrong login link"
 
-echo "workbench start self-test passed: post-start links ~/devs to the workspace devs folder, keeps Codespace logins on the kept disk, routes Codespace git over HTTPS, configures public SkillPort, leaves the HumanLayer daemon stopped and fails loudly"
+# A rebuild keeps only the workspace disk: the second start, in an empty home, finds the repos and logins there.
+: > "$CALLS"
+home="$(fixture_home rebuild)"; ws="$TEST_DIR/ws-rebuild"; mkdir -p "$ws/digio-michelin" "$home/.codex"; echo login > "$home/.codex/auth.json"
+CODESPACES=true CODESPACE_VSCODE_FOLDER="$ws/digio-michelin" start_with_workspaces "$home" "$ws" \
+  || fail "post-start failed before the rebuild: $(cat "$TEST_DIR/out")"
+echo work > "$ws/devs/digio-skills/uncommitted.txt"
+rm -rf "$home"; home="$(fixture_home rebuild)"
+: > "$CALLS"
+CODESPACES=true CODESPACE_VSCODE_FOLDER="$ws/digio-michelin" start_with_workspaces "$home" "$ws" \
+  || fail "post-start failed after the rebuild: $(cat "$TEST_DIR/out")"
+[ "$(cat "$home/devs/digio-skills/uncommitted.txt" 2>/dev/null)" = work ] || fail "the rebuild lost work in ~/devs"
+[ "$(readlink "$ws/devs/digio-michelin")" = "$ws/digio-michelin" ] || fail "the rebuild lost the link to the codespace's own repo"
+[ "$(cat "$home/.codex/auth.json" 2>/dev/null)" = login ] || fail "the rebuild lost the Codex login"
+grep -Fxq "git -C $home/devs/digio-skills pull -q --ff-only" "$CALLS" && ! grep -q 'clone.*digio-skills' "$CALLS" \
+  || fail "after the rebuild post-start did not reuse the kept digio-skills checkout: $(cat "$CALLS")"
+
+# The image's CMD, where no dev container tool runs the slots: post-create.sh, then post-start.sh, in the background, then the command.
+cmd_start() { # <home> [post-create exit]: run workbench-start.sh with stub start scripts; waits for its log
+  local h="$1" s="$1/.digio/github/image/scripts"
+  if [ -n "${2:-}" ]; then
+    mkdir -p "$s" "$h/.digio/github/.git"
+    printf 'echo "create $BASH_ENV" >> "%s/order"; exit %s\n' "$h" "$2" > "$s/post-create.sh"
+    printf 'echo start >> "%s/order"\n' "$h" > "$s/post-start.sh"
+  fi
+  HOME="$h" bash "$DIR/workbench-start.sh" sh -c 'echo "command $WORKBENCH" >> "$HOME/order"' || return 1
+  for _ in $(seq 50); do grep -q '^start: exit' "$h/.local/state/digio-workbench/start.log" 2>/dev/null && return 0; sleep 0.1; done
+  fail "workbench-start.sh wrote no exit line: $(cat "$h/.local/state/digio-workbench/start.log" 2>/dev/null)"
+}
+h="$TEST_DIR/cmd-ok"; cmd_start "$h" 0
+[ "$(tail -n 1 "$h/.local/state/digio-workbench/start.log")" = "start: exit 0" ] || fail "workbench-start.sh did not log a clean start"
+grep -Fxq "create $h/.digio/node-auth-token.sh" "$h/order" || fail "workbench-start.sh did not set BASH_ENV as the dev container does: $(cat "$h/order")"
+grep -Fxq "command 1" "$h/order" || fail "workbench-start.sh did not exec its command with WORKBENCH set: $(cat "$h/order")"
+[ "$(grep -v '^command' "$h/order" | cut -d' ' -f1 | tr '\n' ' ')" = "create start " ] || fail "workbench-start.sh did not run post-create.sh, then post-start.sh: $(cat "$h/order")"
+: > "$h/order"; : > "$CALLS"; cmd_start "$h"
+grep -Fxq "git -C $h/.digio/github pull -q --ff-only" "$CALLS" || fail "workbench-start.sh did not pull the start-up scripts at the next start: $(cat "$CALLS")"
+[ "$(grep -v '^command' "$h/order")" = start ] || fail "workbench-start.sh reran post-create.sh at the next start; a dev container runs it once: $(cat "$h/order")"
+h="$TEST_DIR/cmd-create-fails"; cmd_start "$h" 1
+[ "$(tail -n 1 "$h/.local/state/digio-workbench/start.log")" = "start: exit 1" ] || fail "workbench-start.sh hid a failed post-create.sh"
+! grep -qx start "$h/order" || fail "workbench-start.sh ran post-start.sh after post-create.sh failed; a dev container does not"
+: > "$h/order"; cmd_start "$h"
+grep -q '^create' "$h/order" || fail "workbench-start.sh did not retry a failed post-create.sh at the next start"
+: > "$CALLS"; h="$TEST_DIR/cmd-fresh"; mkdir -p "$h"
+cmd_start "$h"
+grep -Fxq "git clone -q https://github.com/digio-nz/.github.git $h/.digio/github" "$CALLS" || fail "workbench-start.sh did not clone digio-nz/.github into a fresh home: $(cat "$CALLS")"
+grep -q '^start: exit [1-9]' "$h/.local/state/digio-workbench/start.log" || fail "workbench-start.sh hid a start-up with no start-up scripts"
+grep -Fxq "command 1" "$h/order" || fail "workbench-start.sh did not start its command when the start-up failed"
+grep -Fxq 'CMD ["/usr/local/bin/workbench-start.sh"]' "$DIR/../assets/image/Dockerfile" || fail "the image CMD is not workbench-start.sh"
+grep -Fq '"BASH_ENV": "/home/vscode/.digio/node-auth-token.sh"' "$DIR/../../.devcontainer/devcontainer.json" \
+  || fail "devcontainer.json BASH_ENV no longer matches workbench-start.sh"
+
+echo "workbench start self-test passed: the image CMD runs the dev container start-up, then T3, a rebuild keeps ~/devs and the logins, post-start links ~/devs to the workspace devs folder, keeps Codespace logins on the kept disk, routes Codespace git over HTTPS, configures public SkillPort, leaves the HumanLayer daemon stopped and fails loudly"

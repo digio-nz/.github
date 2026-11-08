@@ -62,6 +62,8 @@ That runtime setting is not an npm version pin.
 ## Start-up
 
 The dev container standard runs two scripts, in its `postCreateCommand` and `postStartCommand` slots.
+A Codespace on digio-nz/.github runs them from its own checkout.
+digio-michelin's devcontainer config and the image's `CMD` run them from a digio-nz/.github checkout at `~/.digio/github`, which each start pulls.
 
 - The dev container runs `scripts/post-create.sh` once after it creates the container.
   It clones digio-michelin to `~/.digio/michelin` and sets up the npm auth lines with `npm-auth.sh` and `node-auth-token.sh`, the same two scripts a physical machine runs.
@@ -71,7 +73,11 @@ The dev container standard runs two scripts, in its `postCreateCommand` and `pos
   It does not start the HumanLayer daemon.
   To make the workbench an online HumanLayer host, run `humanlayer login`, then `humanlayer-daemon.sh start`.
 
-So a change in digio-michelin or digio-skills reaches a workbench at its next start, with no rebuild.
+The image's `CMD` is `workbench-start.sh`, beside `humanlayer-daemon.sh` in `/usr/local/bin`. A dev container tool replaces `CMD`, so only a plain container run, such as the always-on one on msi, uses it.
+It sets the same `containerEnv`, clones or pulls `~/.digio/github`, and runs the same lifecycle from it in the background: `post-create.sh` until it succeeds once in the home, then `post-start.sh` at each start. Then it execs T3.
+Its log, `~/.local/state/digio-workbench/start.log`, ends with `start: exit N`.
+On msi, `/workspaces/devs` is the host's `/data/devs`, and the home is a named volume, so a recreate keeps the repos, the logins, `~/.digio/github` and `~/.digio/michelin`.
+So a change to the start-up scripts, to the briefs in digio-michelin or to digio-skills reaches a workbench at its next start, with no rebuild.
 At start, the digio-skills importer, `lib/skillport-sets.py`, imports the third-party sets into namespaces under the skills checkout.
 SkillPort keeps only `skill-search` in each harness's native skills folder.
 The session export needs the `DIGIO_HISTORY_DATABASE_URL` secret; `post-start.sh` says so when it is missing.

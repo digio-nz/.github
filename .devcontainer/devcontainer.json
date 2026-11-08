@@ -2,7 +2,7 @@
 // The image's devcontainer.metadata label carries the settings of its features, so this file names no feature.
 {
   "name": "digio-factory",
-  "image": "ghcr.io/digio-nz/workbench:2026.11.02-2-release",
+  "image": "ghcr.io/digio-nz/workbench:2026.11.07-2-release",
   "runArgs": ["--device=/dev/net/tun"],
   "remoteUser": "vscode",
   "containerEnv": {

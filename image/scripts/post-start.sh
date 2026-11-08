@@ -86,7 +86,8 @@ if [ -d "$SKILLS_DIR/.git" ]; then
   fi
 
   if [ -d "$SKILL_REPO/.git" ]; then
-    npm install --prefix "$SKILL_REPO" --omit=dev --no-audit --no-fund --silent \
+    # Through the ~/devs link, npm rewrites the lockfile's paths and the next pull refuses the dirty checkout.
+    npm install --prefix "$(cd "$SKILL_REPO" && pwd -P)" --omit=dev --no-audit --no-fund --silent \
       || echo "digio-skills dependencies failed; skills without npm dependencies remain available" >&2
     configure_skillport() (
       set -e
