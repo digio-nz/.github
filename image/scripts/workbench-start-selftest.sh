@@ -214,9 +214,9 @@ grep -Fxq "git -C $home/devs/digio-skills pull -q --ff-only" "$CALLS" && ! grep 
 
 # The image's CMD, where no dev container tool runs the slots: post-create.sh, then post-start.sh, in the background, then the command.
 cmd_start() { # <home> [post-create exit]: run workbench-start.sh with stub start scripts; waits for its log
-  local h="$1" s="$1/.digio/michelin/image/scripts"
+  local h="$1" s="$1/.digio/github/image/scripts"
   if [ -n "${2:-}" ]; then
-    mkdir -p "$s" "$h/.digio/michelin/.git"
+    mkdir -p "$s" "$h/.digio/github/.git"
     printf 'echo "create $BASH_ENV" >> "%s/order"; exit %s\n' "$h" "$2" > "$s/post-create.sh"
     printf 'echo start >> "%s/order"\n' "$h" > "$s/post-start.sh"
   fi
@@ -229,7 +229,8 @@ h="$TEST_DIR/cmd-ok"; cmd_start "$h" 0
 grep -Fxq "create $h/.digio/node-auth-token.sh" "$h/order" || fail "workbench-start.sh did not set BASH_ENV as the dev container does: $(cat "$h/order")"
 grep -Fxq "command 1" "$h/order" || fail "workbench-start.sh did not exec its command with WORKBENCH set: $(cat "$h/order")"
 [ "$(grep -v '^command' "$h/order" | cut -d' ' -f1 | tr '\n' ' ')" = "create start " ] || fail "workbench-start.sh did not run post-create.sh, then post-start.sh: $(cat "$h/order")"
-: > "$h/order"; cmd_start "$h"
+: > "$h/order"; : > "$CALLS"; cmd_start "$h"
+grep -Fxq "git -C $h/.digio/github pull -q --ff-only" "$CALLS" || fail "workbench-start.sh did not pull the start-up scripts at the next start: $(cat "$CALLS")"
 [ "$(grep -v '^command' "$h/order")" = start ] || fail "workbench-start.sh reran post-create.sh at the next start; a dev container runs it once: $(cat "$h/order")"
 h="$TEST_DIR/cmd-create-fails"; cmd_start "$h" 1
 [ "$(tail -n 1 "$h/.local/state/digio-workbench/start.log")" = "start: exit 1" ] || fail "workbench-start.sh hid a failed post-create.sh"
@@ -238,8 +239,8 @@ h="$TEST_DIR/cmd-create-fails"; cmd_start "$h" 1
 grep -q '^create' "$h/order" || fail "workbench-start.sh did not retry a failed post-create.sh at the next start"
 : > "$CALLS"; h="$TEST_DIR/cmd-fresh"; mkdir -p "$h"
 cmd_start "$h"
-grep -Fxq "git clone -q https://github.com/digio-nz/digio-michelin.git $h/.digio/michelin" "$CALLS" || fail "workbench-start.sh did not clone digio-michelin into a fresh home: $(cat "$CALLS")"
-grep -q '^start: exit [1-9]' "$h/.local/state/digio-workbench/start.log" || fail "workbench-start.sh hid a start-up with no michelin scripts"
+grep -Fxq "git clone -q https://github.com/digio-nz/.github.git $h/.digio/github" "$CALLS" || fail "workbench-start.sh did not clone digio-nz/.github into a fresh home: $(cat "$CALLS")"
+grep -q '^start: exit [1-9]' "$h/.local/state/digio-workbench/start.log" || fail "workbench-start.sh hid a start-up with no start-up scripts"
 grep -Fxq "command 1" "$h/order" || fail "workbench-start.sh did not start its command when the start-up failed"
 grep -Fxq 'CMD ["/usr/local/bin/workbench-start.sh"]' "$DIR/../assets/image/Dockerfile" || fail "the image CMD is not workbench-start.sh"
 grep -Fq '"BASH_ENV": "/home/vscode/.digio/node-auth-token.sh"' "$DIR/../../.devcontainer/devcontainer.json" \
