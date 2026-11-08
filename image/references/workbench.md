@@ -71,6 +71,10 @@ The dev container standard runs two scripts, in its `postCreateCommand` and `pos
   It does not start the HumanLayer daemon.
   To make the workbench an online HumanLayer host, run `humanlayer login`, then `humanlayer-daemon.sh start`.
 
+The image's `CMD` is `workbench-start.sh`, beside `humanlayer-daemon.sh` in `/usr/local/bin`. A dev container tool replaces `CMD`, so only a plain container run, such as the always-on one on msi, uses it.
+It sets the same `containerEnv` and runs the same lifecycle in the background: `post-create.sh` until it succeeds once in the home, then `post-start.sh` at each start. Then it execs T3.
+Its log, `~/.local/state/digio-workbench/start.log`, ends with `start: exit N`.
+On msi, `/workspaces/devs` is the host's `/data/devs`, and the home is a named volume, so a recreate keeps the repos, the logins and `~/.digio/michelin`.
 So a change in digio-michelin or digio-skills reaches a workbench at its next start, with no rebuild.
 At start, the digio-skills importer, `lib/skillport-sets.py`, imports the third-party sets into namespaces under the skills checkout.
 SkillPort keeps only `skill-search` in each harness's native skills folder.

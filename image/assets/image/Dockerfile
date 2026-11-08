@@ -55,7 +55,12 @@ RUN test -r /opt/digio/michelin-hooks/pre-push/secret-guard.sh \
  && find /opt/digio/michelin-hooks -type f \( -name '*.sh' -o -path '*/shims/*' \) -exec chmod a+x {} + \
  && git config --system core.hooksPath /opt/digio/michelin-hooks/shims
 
+COPY scripts/workbench-start.sh /usr/local/bin/workbench-start.sh
+RUN chmod 0755 /usr/local/bin/workbench-start.sh
+
 USER ${USERNAME}
 # The home does not depend on the runtime: a Vercel Sandbox runs no entrypoint and sets its own environment.
 ENV HOME=/home/${USERNAME}
 WORKDIR /workspaces
+# A dev container tool replaces CMD and runs the start-up scripts from its own slots; a plain container run uses this.
+CMD ["/usr/local/bin/workbench-start.sh"]
