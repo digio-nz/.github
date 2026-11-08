@@ -72,11 +72,31 @@ keep_logins() {
 }
 keep_logins || { echo "logins: the HumanLayer and Codex logins are not on the kept disk" >&2; failed=1; }
 
+# Agents commit as Digby with his hidden address, because GitHub refuses a push that exposes his private one.
+set_identity() { [ -n "$(git config --global "$1")" ] || git config --global "$1" "$2"; }
+if ! { set_identity user.name digbycampbell && set_identity user.email 96467498+digbycampbell@users.noreply.github.com; }; then
+  echo "git: cannot set the global identity" >&2; failed=1
+fi
+
 SKILLS_DIR="$HOME/.digio/michelin"
 SKILL_REPO="${DIGIO_SKILLS_ROOT:-$HOME/devs/digio-skills}"
 export DIGIO_MICHELIN_ROOT="$SKILLS_DIR" DIGIO_SKILLS_ROOT="$SKILL_REPO"
+# The briefs reach the harnesses from this checkout; a local change or a failed pull keeps them stale, so say so.
+brief_drift() {
+  local behind
+  [ -z "$(git -C "$SKILLS_DIR" status --porcelain)" ] \
+    || echo "WARN: briefs: $SKILLS_DIR has local changes, so its pull stops; make them in ~/devs/digio-michelin through a PR, then discard them here" >&2
+  behind="$(git -C "$SKILLS_DIR" rev-list --count HEAD..origin/main 2>/dev/null)"
+  case "$behind" in
+    0) ;;
+    '') echo "WARN: briefs: cannot compare $SKILLS_DIR with origin/main" >&2 ;;
+    *) echo "WARN: briefs: $SKILLS_DIR is $behind commits behind origin/main" >&2 ;;
+  esac
+}
+[ -d "$SKILLS_DIR/.git" ] || echo "WARN: briefs: $SKILLS_DIR is missing, so no brief, skill or session export is set up; rerun post-create.sh" >&2
 if [ -d "$SKILLS_DIR/.git" ]; then
   git -C "$SKILLS_DIR" pull -q --ff-only || true
+  brief_drift
   if [ -d "$SKILL_REPO/.git" ]; then
     git -C "$SKILL_REPO" pull -q --ff-only || echo "digio-skills refresh failed; using the existing checkout" >&2
   else
@@ -150,7 +170,9 @@ if [ -d "$SKILLS_DIR/.git" ]; then
     bash "$SKILL_REPO/skills/install-briefs/scripts/install-briefs.sh" apply --quiet || true
     bash "$SKILL_REPO/skills/install-briefs/scripts/install-briefs.sh" apply --hook claude >/dev/null || true
     bash "$SKILL_REPO/skills/session-close/scripts/session-close.sh" apply >/dev/null || true
-    [ -n "${DIGIO_HISTORY_DATABASE_URL:-}" ] || echo "session export: set the DIGIO_HISTORY_DATABASE_URL secret, or each session export fails"
+    history_env="${DIGIO_HISTORY_ENV:-$HOME/devs/digio-history/.env.local}"
+    [ -n "${DIGIO_HISTORY_DATABASE_URL:-}" ] || [ -s "$history_env" ] \
+      || echo "WARN: session export: no DIGIO_HISTORY_DATABASE_URL secret and no $history_env, so each session export fails" >&2
     bash "$SCRIPT_DIR/session-export-sweep.sh" start "$SKILL_REPO" \
       || { echo "session-export scheduler failed to start: session sweeps are not scheduled" >&2; failed=1; }
   fi

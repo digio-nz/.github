@@ -34,6 +34,11 @@ printf '#!/usr/bin/env bash\necho "npm $*" >> "$CALLS"\n' > "$TEST_DIR/bin/npm"
 cat > "$TEST_DIR/bin/git" <<'STUB'
 #!/usr/bin/env bash
 echo "git $*" >> "$CALLS"
+case "$*" in
+  "config --global user.name"|"config --global user.email") [ -n "${GIT_IDENTITY:-}" ] || exit 1; echo "$GIT_IDENTITY" ;;
+  *" status --porcelain") [ -z "${GIT_STATUS:-}" ] || echo "$GIT_STATUS" ;;
+  *" rev-list --count HEAD..origin/main") echo "${GIT_BEHIND:-0}" ;;
+esac
 if [ "${1:-}" = clone ]; then
   target="${*: -1}"
   cp -R "$CLONE_SOURCE" "$target"
@@ -48,6 +53,14 @@ echo "${0##*/} $*" >> "$CALLS"
 STUB
   chmod +x "$TEST_DIR/bin/$command"
 done
+# op inject resolves the one reference post-create may ask for, into the file it names.
+cat > "$TEST_DIR/bin/op" <<'STUB'
+#!/usr/bin/env bash
+echo "op $*" >> "$CALLS"
+[ -z "${FAIL_op:-}" ] || exit 1
+[ "$1 $2 $3" = "inject --force --out-file" ] || exit 2
+sed 's|{{ op://orchestrator/DIGIO_HISTORY_DATABASE_URL/credential }}|postgres://fixture-history|' > "$4"
+STUB
 # post-start runs the importer with the python beside skillport-mcp, the venv's.
 printf '#!/usr/bin/env bash\nexec python3 "$@"\n' > "$TEST_DIR/bin/python"
 mkdir -p "$TEST_DIR/skills-template/skills/skill-search"
@@ -62,7 +75,7 @@ done
 touch "$TEST_DIR/skills-template/package.json"
 chmod +x "$TEST_DIR/bin/"* "$TEST_DIR/skills-template/skills/"*/scripts/*.sh
 export PATH="$TEST_DIR/bin:$PATH" CALLS="$TEST_DIR/calls" CLONE_SOURCE="$TEST_DIR/skills-template"
-unset DIGIO_SKILLS_ROOT CLAUDE_CONFIG_DIR CODESPACES CODESPACE_VSCODE_FOLDER
+unset DIGIO_SKILLS_ROOT CLAUDE_CONFIG_DIR CODESPACES CODESPACE_VSCODE_FOLDER DIGIO_HISTORY_DATABASE_URL DIGIO_HISTORY_ENV GIT_IDENTITY GIT_STATUS GIT_BEHIND
 # A Codespace or workbench running this test has a real /workspaces; a case that wants one passes its own.
 export DIGIO_WORKSPACES="$TEST_DIR/no-workspaces"
 
@@ -82,6 +95,30 @@ HOME="$home" bash "$TEST_DIR/devcontainer/post-create.sh" > "$TEST_DIR/out" 2>&1
   || fail "post-create configured skills: $(cat "$CALLS")"
 grep -Fxq "git config --global core.hooksPath $home/.digio/michelin/hooks/shims" "$CALLS" \
   || fail "post-create did not point the global hooksPath at the michelin shims: $(cat "$CALLS")"
+grep -Fq "WARN: session export: $home/devs/digio-history is missing" "$TEST_DIR/out" \
+  || fail "post-create did not warn that digio-history is missing: $(cat "$TEST_DIR/out")"
+
+# A first start: ~/devs is not linked yet, so the history file goes to the workspace disk.
+: > "$CALLS"
+home="$(fixture_home history-write)"; ws="$TEST_DIR/ws-history"; mkdir -p "$ws/devs/digio-history"
+HOME="$home" DIGIO_WORKSPACES="$ws" bash "$TEST_DIR/devcontainer/post-create.sh" > "$TEST_DIR/out" 2>&1 \
+  || fail "post-create failed writing the history file: $(cat "$TEST_DIR/out")"
+[ "$(cat "$ws/devs/digio-history/.env.local" 2>/dev/null)" = "DATABASE_URL=postgres://fixture-history" ] \
+  || fail "post-create did not write DATABASE_URL from 1Password: $(cat "$TEST_DIR/out") $(cat "$CALLS")"
+! grep -q fixture-history "$TEST_DIR/out" || fail "post-create printed the database URL"
+: > "$CALLS"
+HOME="$home" DIGIO_WORKSPACES="$ws" bash "$TEST_DIR/devcontainer/post-create.sh" > "$TEST_DIR/out" 2>&1 || fail "post-create failed with a history file"
+! grep -q '^op ' "$CALLS" || fail "post-create read 1Password when the history file exists: $(cat "$CALLS")"
+rm "$ws/devs/digio-history/.env.local"
+HOME="$home" DIGIO_WORKSPACES="$ws" DIGIO_HISTORY_DATABASE_URL=set bash "$TEST_DIR/devcontainer/post-create.sh" > "$TEST_DIR/out" 2>&1 \
+  || fail "post-create failed with the history secret"
+! grep -q '^op ' "$CALLS" && [ ! -e "$ws/devs/digio-history/.env.local" ] || fail "post-create wrote the history file when the secret is set"
+if HOME="$home" DIGIO_WORKSPACES="$ws" FAIL_op=1 bash "$TEST_DIR/devcontainer/post-create.sh" > "$TEST_DIR/out" 2>&1; then :; else
+  fail "post-create failed when op could not read the history URL; it warns only: $(cat "$TEST_DIR/out")"
+fi
+grep -Fq "WARN: session export: op cannot read op://orchestrator/DIGIO_HISTORY_DATABASE_URL/credential" "$TEST_DIR/out" \
+  || fail "post-create did not warn that op cannot read the history URL: $(cat "$TEST_DIR/out")"
+[ ! -e "$ws/devs/digio-history/.env.local" ] || fail "post-create left a history file when op failed"
 
 : > "$CALLS"
 home="$(fixture_home post-start-clone)"
@@ -102,6 +139,12 @@ grep -Fxq "session-export-sweep.sh start $home/devs/digio-skills" "$CALLS" \
   || fail "post-start did not schedule session exports from the skills checkout"
 ! grep -q "humanlayer-daemon.sh" "$CALLS" || fail "post-start started the HumanLayer daemon: $(cat "$CALLS")"
 ! grep -q 'install-skills' "$CALLS" || fail "post-start still ran install-skills: $(cat "$CALLS")"
+grep -Fxq "git config --global user.name digbycampbell" "$CALLS" \
+  && grep -Fxq "git config --global user.email 96467498+digbycampbell@users.noreply.github.com" "$CALLS" \
+  || fail "post-start did not set the hidden-email git identity: $(cat "$CALLS")"
+! grep -q '^WARN: briefs' "$TEST_DIR/out" || fail "post-start warned about a clean, current brief checkout: $(cat "$TEST_DIR/out")"
+grep -Fq "WARN: session export: no DIGIO_HISTORY_DATABASE_URL secret and no $home/devs/digio-history/.env.local" "$TEST_DIR/out" \
+  || fail "post-start did not warn that session exports have no store: $(cat "$TEST_DIR/out")"
 
 : > "$CALLS"
 home="$(fixture_home post-start-pull)"
@@ -113,6 +156,24 @@ HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" \
   || fail "post-start failed with an existing checkout: $(cat "$TEST_DIR/out")"
 grep -Fxq "git -C $home/devs/digio-skills pull -q --ff-only" "$CALLS" \
   || fail "post-start did not pull the existing skills checkout: $(cat "$CALLS")"
+
+: > "$CALLS"
+home="$(fixture_home identity-kept)"
+mkdir -p "$home/devs/digio-history"; echo DATABASE_URL=x > "$home/devs/digio-history/.env.local"
+HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" GIT_IDENTITY=someone \
+  bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 || fail "post-start failed with a git identity: $(cat "$TEST_DIR/out")"
+! grep -Eq '^git config --global user\.(name|email) ' "$CALLS" || fail "post-start replaced an existing git identity: $(cat "$CALLS")"
+! grep -q 'WARN: session export' "$TEST_DIR/out" || fail "post-start warned about session export with a history file: $(cat "$TEST_DIR/out")"
+
+home="$(fixture_home brief-drift)"
+HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" GIT_STATUS=' M briefs/AGENTS.md' GIT_BEHIND=3 \
+  bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 || fail "post-start failed on a drifted brief checkout; it warns only: $(cat "$TEST_DIR/out")"
+grep -Fq "WARN: briefs: $home/.digio/michelin has local changes" "$TEST_DIR/out" || fail "post-start did not warn about local brief changes: $(cat "$TEST_DIR/out")"
+grep -Fq "WARN: briefs: $home/.digio/michelin is 3 commits behind origin/main" "$TEST_DIR/out" || fail "post-start did not warn that the briefs are behind: $(cat "$TEST_DIR/out")"
+
+home="$TEST_DIR/home-no-michelin"; mkdir -p "$home"
+HOME="$home" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1
+grep -Fq "WARN: briefs: $home/.digio/michelin is missing" "$TEST_DIR/out" || fail "post-start did not warn that the briefs are missing: $(cat "$TEST_DIR/out")"
 
 : > "$CALLS"
 home="$(fixture_home skillport-failure)"
@@ -246,4 +307,4 @@ grep -Fxq 'CMD ["/usr/local/bin/workbench-start.sh"]' "$DIR/../assets/image/Dock
 grep -Fq '"BASH_ENV": "/home/vscode/.digio/node-auth-token.sh"' "$DIR/../../.devcontainer/devcontainer.json" \
   || fail "devcontainer.json BASH_ENV no longer matches workbench-start.sh"
 
-echo "workbench start self-test passed: the image CMD runs the dev container start-up, then T3, a rebuild keeps ~/devs and the logins, post-start links ~/devs to the workspace devs folder, keeps Codespace logins on the kept disk, routes Codespace git over HTTPS, configures public SkillPort, leaves the HumanLayer daemon stopped and fails loudly"
+echo "workbench start self-test passed: the image CMD runs the dev container start-up, then T3, post-start sets the hidden-email git identity and warns on drifted briefs, post-create writes the session-export store from 1Password or warns, a rebuild keeps ~/devs and the logins, post-start links ~/devs to the workspace devs folder, keeps Codespace logins on the kept disk, routes Codespace git over HTTPS, configures public SkillPort, leaves the HumanLayer daemon stopped and fails loudly"
