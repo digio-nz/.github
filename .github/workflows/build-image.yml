@@ -17,8 +17,6 @@
 name: Build image
 
 on:
-  schedule:
-    - cron: "0 16 * * 1"
   workflow_dispatch:
     inputs:
       platforms:
