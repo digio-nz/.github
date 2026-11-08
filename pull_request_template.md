@@ -19,7 +19,7 @@
      A Phase PR closes its Phase; the Plan closes when the last phase lands.
      For an issue branch, replace the placeholder with Closes #n from its issue-n segment.
      Preserve that closing line when refreshing the PR body, including a pipeline rerun.
-     For a chore branch with no issue, replace the placeholder with None. -->
+     For a p<n>, bug, task or chore branch with no issue, replace the placeholder with None. -->
 
 Closes #
 
@@ -51,4 +51,6 @@ Closes #
      - Touches schema, auth or secrets: say what any migration does and when it runs.
      - Deferred something: say what, and why deferring is safe. -->
 
-shipped-via:
+<!-- The builder that made this PR: t3code, humanlayer, codex, grokbot or claude. -->
+
+built-by:
