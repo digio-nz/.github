@@ -31,12 +31,15 @@ Closes #
      - Say what you exercised in the running application and what you saw.
        A passing suite alone is not evidence the behaviour is right.
      - Name the regression test and the CI job that runs it.
-       State any skip condition, advisory-only coverage, or unverified scenario. -->
+       State any skip condition, advisory-only coverage, or unverified scenario.
+     - Not verified on the target: give the exact command an attended operator runs. -->
 
 ## Findings not fixed
 
 <!-- Target: about 3 lines. Defects observed and left. Fix on sight when one line here explains it and it needs
-     no test strategy of its own; otherwise it lands here, with evidence.
+     no test strategy of its own; otherwise it lands here, one line each:
+     - <repo>:<path>:<line> — <defect> — #<n>
+     Write "no issue" in place of #<n> when no issue tracks it. Another repo's finding names that repo.
      Delete this section when empty. -->
 
 ## AGENTS.md change needed
@@ -49,7 +52,8 @@ Closes #
 
 <!-- Target: about 2 lines. Only when they apply; delete the rest.
      - Touches schema, auth or secrets: say what any migration does and when it runs.
-     - Deferred something: say what, and why deferring is safe. -->
+     - Deferred something: say what, and why deferring is safe.
+     - Reaches live only after a manual step (a pin bump, an image rebuild, a clone pull, a deploy): name the step and who runs it. -->
 
 <!-- The builder that made this PR: t3code, humanlayer, codex, grokbot or claude. -->
 
