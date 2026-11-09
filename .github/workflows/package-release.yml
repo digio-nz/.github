@@ -13,9 +13,9 @@
 # GitHub keeps one pending run and cancels an older pending one, which is safe, because the next run reads every title
 # since the last tag.
 #
-# Both jobs run on GitHub, not the Mac mini: publish holds a token that can write, and a shared repo's runs must not
-# wait on the Mini's runners (digio-michelin/templates/WORKFLOWS.md). Both check out the whole history and every tag, so next
-# sees the last tag and each first-parent title. publish keeps the checkout credentials, because it pushes the tag.
+# Both jobs run on GitHub-hosted runners, because publish holds a token that can write. Both check out the whole history
+# and every tag, so next sees the last tag and each first-parent title. publish keeps the checkout credentials, because it
+# pushes the tag.
 name: Package Release
 
 on:
