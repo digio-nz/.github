@@ -100,7 +100,10 @@ It writes its log to `${XDG_STATE_HOME:-$HOME/.local/state}/digio-workbench/sess
 Do not edit the runtime copy.
 To change digio-michelin, work in `/workspaces/digio-michelin` on a branch, and open a PR.
 A worker sandbox has no `/workspaces`, so it uses the same `$HOME/.digio/michelin`.
-`DIGIO_MICHELIN_ROOT` names the runtime copy for every script: `~/.digio/michelin` in a workbench or a sandbox, and `~/devs/digio-michelin` on a physical machine, where dotfiles sets it.
+`DIGIO_MICHELIN_ROOT` names the runtime copy for every script.
+The image's set-up scripts and the sandbox bootstrap set it to `~/.digio/michelin`.
+Nothing sets it on a fleet machine, so each script uses its own default.
+There, dotfiles keeps the clone at `~/.digio/michelin`.
 
 ## Codespaces facts
 
