@@ -55,6 +55,11 @@ jobs:
         continue-on-error: true
         if: ${{ !cancelled() && steps.range.outcome == 'success' }}
         uses: digio-nz/.github/.github/actions/discipline/pr-sections@7e1b4d3ee24666235426aec23b396a87964bea9e
+      - name: Each finding left unfixed cites an issue or says no issue
+        id: pr-findings
+        continue-on-error: true
+        if: ${{ !cancelled() && steps.range.outcome == 'success' }}
+        uses: digio-nz/.github/.github/actions/discipline/pr-findings@1806171ab194e5d15c7307d00b9514ff68321945
       - name: The diff changes no hand-edited version or changelog
         id: no-hand-version
         continue-on-error: true
