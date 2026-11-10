@@ -1,0 +1,10 @@
+name: pr-findings
+description: Each finding left unfixed cites an issue or says no issue
+runs:
+  using: composite
+  steps:
+    - name: Each finding left unfixed cites an issue or says no issue
+      shell: bash
+      run: |
+        set -euo pipefail
+        bash "$GITHUB_ACTION_PATH/../gates.sh" pr-findings "$RUNNER_TEMP/pr-body.txt"

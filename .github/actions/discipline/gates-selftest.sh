@@ -195,6 +195,35 @@ run 0 "pr-sections: Dependabot is exempt" -- pr-sections "$sections/no-why.md" "
 run 1 "pr-sections: a person on a dependabot branch is not exempt" -- pr-sections "$sections/no-why.md" "digbycampbell" "dependabot/npm_and_yarn/x"
 run 3 "pr-sections: a missing file is a usage fault" -- pr-sections "$sections/none.md"
 
+# ── pr-findings ──────
+findings="$(mktemp -d)"
+f_head='## Why\n\nBecause.\n\n## Findings not fixed\n\n'
+f_tail='\n## Declarations\n\n- none here\n'
+printf "$f_head"'- a:src/x.ts:3 — drops the error — #12\n'"$f_tail" > "$findings/good.md"
+printf "$f_head"'- a:src/x.ts:3 — drops the error — no issue\n'"$f_tail" > "$findings/no-issue.md"
+printf "$f_head"'- b:lib/y.sh:9 — flaky — digio-nz/digio-skills#106\n'"$f_tail" > "$findings/cross-repo.md"
+printf "$f_head"'- a:src/x.ts:3 — drops the error — #12\n- a:src/z.ts:7 — leaks a handle\n'"$f_tail" > "$findings/neither.md"
+printf "$f_head"'- a:src/x.ts:3 — see issue12 or x#y\r\n'"$f_tail" > "$findings/not-a-ref.md"
+printf "$f_head"'<!-- - <repo>:<path>:<line> — <defect> — #<n> -->\n'"$f_tail" > "$findings/template.md"
+printf "$f_head""$f_tail" > "$findings/empty.md"
+printf '## Why\n\nBecause.\n\n## Declarations\n\n- none here\n' > "$findings/missing.md"
+run 0 "pr-findings: a line that cites #n" -- pr-findings "$findings/good.md"
+run 0 "pr-findings: a no-issue line" -- pr-findings "$findings/no-issue.md"
+run 0 "pr-findings: a line that cites owner/repo#n" -- pr-findings "$findings/cross-repo.md"
+run 1 "pr-findings: a line with neither" -- pr-findings "$findings/neither.md"
+run 1 "pr-findings: issue12 and x#y are not references" -- pr-findings "$findings/not-a-ref.md"
+run 0 "pr-findings: the template comment alone" -- pr-findings "$findings/template.md"
+run 0 "pr-findings: an empty section" -- pr-findings "$findings/empty.md"
+run 0 "pr-findings: no section" -- pr-findings "$findings/missing.md"
+run 3 "pr-findings: a missing file is a usage fault" -- pr-findings "$findings/none.md"
+neither_out="$(bash "$gates" pr-findings "$findings/neither.md" 2>&1)"
+if grep -qF -- '- a:src/z.ts:7 — leaks a handle' <<<"$neither_out" && ! grep -qF 'src/x.ts' <<<"$neither_out"; then
+  echo "ok   pr-findings: the failure names only the line with neither"; pass=$((pass + 1))
+else
+  echo "FAIL pr-findings: the failure names only the line with neither"; fail=$((fail + 1))
+  printf '%s\n' "$neither_out" | awk '{ print "       " $0 }'
+fi
+
 # ── pr-title ─────────────────────────────────────────────────────────
 run 0 "pr-title: type(scope): description" -- pr-title "fix(board): stop minting labels"
 run 0 "pr-title: type: description" -- pr-title "docs: name the enforcement"

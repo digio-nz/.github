@@ -32,6 +32,10 @@
 #
 #   pr-sections <body-file> [author] [branch]
 #     The PR body has text under `## Why` and `## Decisions`. Template comments do not count.
+#   pr-findings <body-file>
+#     Each list item under `## Findings not fixed` cites an issue (`#<n>` or
+#     `<owner>/<repo>#<n>`) or says `no issue`. A missing or empty section
+#     passes. Template comments do not count.
 #   pr-title <title>
 #     The PR title matches the conventional-commit shape the fleet's merged
 #     history uses (`type(scope): description` or `type: description`,
@@ -225,6 +229,31 @@ PY
       exit 0
     fi
     echo "::error::pr-sections: the PR body needs text under these headings: $missing"
+    exit 1
+    ;;
+
+  pr-findings)
+    BODY_FILE="${1:-}"
+    [ -f "$BODY_FILE" ] || die3 "usage: gates.sh pr-findings <body-file>"
+    bad="$(python3 - "$BODY_FILE" <<'PY'
+import re, sys
+body = open(sys.argv[1], encoding="utf-8").read().replace("\r\n", "\n")
+body = re.sub(r"<!--.*?-->", "", body, flags=re.S)
+parts = re.split(r"(?m)^## +(.+?)[ \t]*$", body)
+section = dict(zip(parts[1::2], parts[2::2])).get("Findings not fixed", "")
+item = re.compile(r"^ {0,3}(?:[-*+]|\d+[.)])\s+\S")
+ref = re.compile(r"(?<![\w/#])(?:[\w.-]+/[\w.-]+)?#\d+\b|\bno issue\b", re.I)
+for line in section.split("\n"):
+    if item.match(line) and not ref.search(line):
+        print("  " + line.strip())
+PY
+)" || die3 "pr-findings: could not read $BODY_FILE"
+    if [ -z "$bad" ]; then
+      echo "pr-findings: each Findings not fixed line cites an issue or says no issue. OK."
+      exit 0
+    fi
+    echo "::error::pr-findings: these Findings not fixed lines need #<n>, <owner>/<repo>#<n> or \"no issue\":"
+    printf '%s\n' "$bad"
     exit 1
     ;;
 
@@ -424,5 +453,5 @@ EOF
     node --experimental-strip-types "${DIGIO_SKILLS_ROOT:-$HOME/.digio/skills}/skills/pr-labeller/scripts/pr-labeller.ts" "${label_args[@]}"
     ;;
 
-  *) die3 "usage: gates.sh [append-only|pr-sections|pr-title|pr-labels-apply|exempt-pr|no-hand-version|migrations|no-secret|actionlint|actionlint-install] ..." ;;
+  *) die3 "usage: gates.sh [append-only|pr-sections|pr-findings|pr-title|pr-labels-apply|exempt-pr|no-hand-version|migrations|no-secret|actionlint|actionlint-install] ..." ;;
 esac
