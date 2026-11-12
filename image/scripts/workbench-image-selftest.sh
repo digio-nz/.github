@@ -671,7 +671,7 @@ bash "$CLI" layers >/dev/null 2>&1; [ $? = 2 ] && pass "layers without --tag exi
 
 # --- the start scripts ---------------------------------------------------------------------------------------------------
 
-for t in tailnet-start-selftest.sh session-export-sweep-selftest.sh humanlayer-daemon-selftest.sh workbench-start-selftest.sh; do
+for t in tailnet-start-selftest.sh session-export-sweep-selftest.sh humanlayer-daemon-selftest.sh git-hooks-selftest.sh workbench-start-selftest.sh; do
   out="$(bash "$DIR/$t" 2>&1)" && pass "$t" || fail "$t: $out"
 done
 

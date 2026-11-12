@@ -4,7 +4,7 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-MICHELIN_HOOKS="$(cd "$DIR/../../hooks" && pwd -P)"
+HOOKS="$(cd "$DIR/../../hooks" && pwd -P)"
 # shellcheck source=../../lib/host.sh
 . "$DIR/../../lib/host.sh"
 TEST_DIR="$(mktemp -d)"
@@ -16,7 +16,7 @@ fail() {
 }
 
 mkdir -p "$TEST_DIR/devcontainer"
-cp "$DIR/post-create.sh" "$DIR/post-start.sh" "$DIR/npm-auth.sh" "$DIR/node-auth-token.sh" "$TEST_DIR/devcontainer/"
+cp "$DIR/post-create.sh" "$DIR/post-start.sh" "$DIR/git-hooks.sh" "$DIR/npm-auth.sh" "$DIR/node-auth-token.sh" "$TEST_DIR/devcontainer/"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$TEST_DIR/devcontainer/tailnet-start.sh"
 printf '#!/usr/bin/env bash\necho "session-export-sweep.sh $*" >> "$CALLS"\n[ -z "${FAIL_session_export_scheduler:-}" ]\n' \
   > "$TEST_DIR/devcontainer/session-export-sweep.sh"
@@ -38,6 +38,8 @@ case "$*" in
   "config --global user.name"|"config --global user.email") [ -n "${GIT_IDENTITY:-}" ] || exit 1; echo "$GIT_IDENTITY" ;;
   *" status --porcelain") [ -z "${GIT_STATUS:-}" ] || echo "$GIT_STATUS" ;;
   *" rev-list --count HEAD..origin/main") echo "${GIT_BEHIND:-0}" ;;
+  "config --system --type=path --get core.hooksPath") [ -n "$GIT_SYSTEM_HOOKS" ] || exit 1; echo "$GIT_SYSTEM_HOOKS" ;;
+  "config --global --type=path --get core.hooksPath") [ -n "${GIT_GLOBAL_HOOKS:-}" ] || exit 1; echo "$GIT_GLOBAL_HOOKS" ;;
 esac
 if [ "${1:-}" = clone ]; then
   target="${*: -1}"
@@ -75,15 +77,15 @@ done
 touch "$TEST_DIR/skills-template/package.json"
 chmod +x "$TEST_DIR/bin/"* "$TEST_DIR/skills-template/skills/"*/scripts/*.sh
 export PATH="$TEST_DIR/bin:$PATH" CALLS="$TEST_DIR/calls" CLONE_SOURCE="$TEST_DIR/skills-template"
-unset DIGIO_SKILLS_ROOT CLAUDE_CONFIG_DIR CODESPACES CODESPACE_VSCODE_FOLDER DIGIO_HISTORY_DATABASE_URL DIGIO_HISTORY_ENV GIT_IDENTITY GIT_STATUS GIT_BEHIND
+unset DIGIO_SKILLS_ROOT CLAUDE_CONFIG_DIR CODESPACES CODESPACE_VSCODE_FOLDER DIGIO_HISTORY_DATABASE_URL DIGIO_HISTORY_ENV GIT_IDENTITY GIT_STATUS GIT_BEHIND GIT_GLOBAL_HOOKS
+# The image names its baked hooks in the system gitconfig; a case that wants none passes an empty value.
+export GIT_SYSTEM_HOOKS="$HOOKS/shims"
 # A Codespace or workbench running this test has a real /workspaces; a case that wants one passes its own.
 export DIGIO_WORKSPACES="$TEST_DIR/no-workspaces"
 
 fixture_home() {
   local home="$TEST_DIR/home-$1"
   mkdir -p "$home/.digio/michelin/.git"
-  # post-create installs the clone's git hooks globally and fails without them.
-  cp -a "$MICHELIN_HOOKS" "$home/.digio/michelin/hooks"
   echo "$home"
 }
 
@@ -93,8 +95,17 @@ HOME="$home" bash "$TEST_DIR/devcontainer/post-create.sh" > "$TEST_DIR/out" 2>&1
   || fail "post-create failed: $(cat "$TEST_DIR/out")"
 ! grep -Eq 'skill-sets|skills.py|install-skills|install-briefs' "$CALLS" \
   || fail "post-create configured skills: $(cat "$CALLS")"
-grep -Fxq "git config --global core.hooksPath $home/.digio/michelin/hooks/shims" "$CALLS" \
-  || fail "post-create did not point the global hooksPath at the michelin shims: $(cat "$CALLS")"
+# The Michelin clone in the fixture has no hooks folder: the image's system hooksPath is the one in effect.
+grep -Fxq "git config --system --type=path --get core.hooksPath" "$CALLS" \
+  || fail "post-create did not check the system hooksPath: $(cat "$CALLS")"
+! grep -Eq '^git config --global (--add |--replace-all )?core\.hooksPath ' "$CALLS" \
+  || fail "post-create set a global hooksPath, which overrides the image's hooks: $(cat "$CALLS")"
+if HOME="$home" GIT_SYSTEM_HOOKS='' bash "$TEST_DIR/devcontainer/post-create.sh" > "$TEST_DIR/out" 2>&1; then
+  fail "post-create exited 0 with no hooksPath in effect"
+fi
+grep -Fq "hooks: core.hooksPath is 'unset' and has no pre-push hook; git push is not guarded" "$TEST_DIR/out" \
+  || fail "post-create did not name the missing hooksPath: $(cat "$TEST_DIR/out")"
+grep -q '^workbench ready' "$TEST_DIR/out" || fail "post-create stopped at the failed hooks check: $(cat "$TEST_DIR/out")"
 grep -Fq "WARN: session export: $home/devs/digio-history is missing" "$TEST_DIR/out" \
   || fail "post-create did not warn that digio-history is missing: $(cat "$TEST_DIR/out")"
 
@@ -170,6 +181,22 @@ HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" GIT_STATUS=' M br
   bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 || fail "post-start failed on a drifted brief checkout; it warns only: $(cat "$TEST_DIR/out")"
 grep -Fq "WARN: briefs: $home/.digio/michelin has local changes" "$TEST_DIR/out" || fail "post-start did not warn about local brief changes: $(cat "$TEST_DIR/out")"
 grep -Fq "WARN: briefs: $home/.digio/michelin is 3 commits behind origin/main" "$TEST_DIR/out" || fail "post-start did not warn that the briefs are behind: $(cat "$TEST_DIR/out")"
+
+# A home from an older image: each start removes the global hooksPath in the Michelin clone, and fails with no hook in effect.
+: > "$CALLS"
+home="$(fixture_home hooks-stale)"
+HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" GIT_GLOBAL_HOOKS="$home/.digio/michelin/hooks/shims" \
+  bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 || fail "post-start failed on a stale global hooksPath: $(cat "$TEST_DIR/out")"
+grep -Fxq "git config --global --unset-all core.hooksPath" "$CALLS" \
+  || fail "post-start kept a global hooksPath in the Michelin clone: $(cat "$CALLS")"
+: > "$CALLS"
+home="$(fixture_home hooks-none)"
+if HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" GIT_SYSTEM_HOOKS='' \
+  bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1; then
+  fail "post-start exited 0 with no hooksPath in effect"
+fi
+grep -Fq "git push is not guarded" "$TEST_DIR/out" || fail "post-start did not name the missing hooksPath: $(cat "$TEST_DIR/out")"
+grep -Fq 'install-briefs.sh apply' "$CALLS" || fail "post-start stopped at the failed hooks check"
 
 home="$TEST_DIR/home-no-michelin"; mkdir -p "$home"
 HOME="$home" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1
@@ -307,4 +334,4 @@ grep -Fxq 'CMD ["/usr/local/bin/workbench-start.sh"]' "$DIR/../assets/image/Dock
 grep -Fq '"BASH_ENV": "/home/vscode/.digio/node-auth-token.sh"' "$DIR/../../.devcontainer/devcontainer.json" \
   || fail "devcontainer.json BASH_ENV no longer matches workbench-start.sh"
 
-echo "workbench start self-test passed: the image CMD runs the dev container start-up, then T3, post-start sets the hidden-email git identity and warns on drifted briefs, post-create writes the session-export store from 1Password or warns, a rebuild keeps ~/devs and the logins, post-start links ~/devs to the workspace devs folder, keeps Codespace logins on the kept disk, routes Codespace git over HTTPS, configures public SkillPort, leaves the HumanLayer daemon stopped and fails loudly"
+echo "workbench start self-test passed: the image CMD runs the dev container start-up, then T3, the start scripts check the git hooks and remove a stale global hooksPath, post-start sets the hidden-email git identity and warns on drifted briefs, post-create writes the session-export store from 1Password or warns, a rebuild keeps ~/devs and the logins, post-start links ~/devs to the workspace devs folder, keeps Codespace logins on the kept disk, routes Codespace git over HTTPS, configures public SkillPort, leaves the HumanLayer daemon stopped and fails loudly"

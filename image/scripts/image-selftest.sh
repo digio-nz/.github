@@ -65,5 +65,7 @@ bash "$DIR/humanlayer-daemon-selftest.sh"
   || fail "humanlayer-daemon.sh is not on PATH"
 command -v flock >/dev/null || fail "humanlayer-daemon.sh needs flock, which is not on PATH"
 bash "$DIR/npm-auth-selftest.sh"
+# The start scripts' hooks check, on the image's own system gitconfig and a home with no global one.
+bash "$DIR/git-hooks.sh" || fail "git-hooks.sh does not accept the image's baked hooksPath"
 
 echo "image self-test passed: tools, SkillPort, git hooks and worker setup"
