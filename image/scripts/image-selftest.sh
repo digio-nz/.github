@@ -21,8 +21,7 @@ NO_MISTAKES_BIN="$(command -v no-mistakes)" || fail "no-mistakes is not on PATH"
 "$NO_MISTAKES_BIN" --version >/dev/null \
   || fail "no-mistakes did not report a version"
 
-/opt/digio/skillport-venv/bin/python -c 'import skillport' \
-  || fail "the SkillPort virtual environment cannot import skillport"
+/opt/digio/tools/skills-manager-cli.sh check || fail "the image lacks the pinned Skills Manager CLI"
 
 # Every push in the image runs secret-guard: the system gitconfig points at the baked shims, and a credential-shaped
 # push to a throwaway local remote is refused through them.
@@ -54,10 +53,14 @@ TEST_HOME="$(mktemp -d)"
 export HOME="$TEST_HOME"
 trap 'rm -rf "$TEST_HOME"' EXIT
 
-/opt/digio/skillport-venv/bin/skillport-mcp --help >/dev/null \
-  || fail "public skillport-mcp cannot start"
-/opt/digio/skillport-venv/bin/skillport validate "$DIGIO_SKILLS_ROOT/skills" \
-  || fail "the skills checkout fails public validation"
+# The skills that the workbench and a worker get, installed for real into the scratch home.
+mkdir -p "$HOME/.claude" "$HOME/.codex"
+for consumer in workbench worker; do
+  bash "$DIGIO_SKILLS_ROOT/lib/skills-install.sh" apply "$consumer" >/dev/null \
+    && bash "$DIGIO_SKILLS_ROOT/lib/skills-install.sh" check "$consumer" \
+    || fail "the $consumer skills do not install with the image's Skills Manager CLI"
+  rm -rf "$HOME/.skills-manager" "$HOME/.claude/skills" "$HOME/.codex/skills"
+done
 
 bash "$DIR/session-export-sweep-selftest.sh"
 bash "$DIR/humanlayer-daemon-selftest.sh"
@@ -66,4 +69,4 @@ bash "$DIR/humanlayer-daemon-selftest.sh"
 command -v flock >/dev/null || fail "humanlayer-daemon.sh needs flock, which is not on PATH"
 bash "$DIR/npm-auth-selftest.sh"
 
-echo "image self-test passed: tools, SkillPort, git hooks and worker setup"
+echo "image self-test passed: tools, installed skills, git hooks and worker setup"

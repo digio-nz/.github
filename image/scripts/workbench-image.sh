@@ -104,22 +104,16 @@ case "$cmd" in
     args=(npx --yes @devcontainers/cli build --workspace-folder "$MICHELIN" --config "$MICHELIN/$CONFIG" --image-name "$GHCR:$tag" --platform "$platform")
     [ "$push" = 1 ] && args+=(--push)
     if [ "$dry" = 0 ]; then
-      skills_root="${DIGIO_SKILLS_ROOT:-$HOME/devs/digio-skills}"
-      skills_ref="$(cat "$MICHELIN/image/skills.ref")"
       lock_dir="$MICHELIN/image/.build"
-      lock_file="$lock_dir/skillport-requirements.txt"
       hooks_dir="$lock_dir/michelin-hooks"
-      [ ! -e "$lock_file" ] || die "$lock_file already exists"
       [ ! -e "$hooks_dir" ] || die "$hooks_dir already exists"
       mkdir -p "$lock_dir"
-      git -C "$skills_root" show "$skills_ref:requirements.txt" > "$lock_file" \
-        || { rm -f "$lock_file"; rmdir "$lock_dir" 2>/dev/null || true; die "cannot read requirements.txt at digio-skills $skills_ref"; }
       # Bake the live hooks tree into the image (secret-guard + committed shims). Fail closed if the guard is missing.
       cp -a "$MICHELIN/hooks" "$hooks_dir" \
-        || { rm -rf "$lock_file" "$hooks_dir"; rmdir "$lock_dir" 2>/dev/null || true; die "cannot stage hooks into $hooks_dir"; }
+        || { rm -rf "$hooks_dir"; rmdir "$lock_dir" 2>/dev/null || true; die "cannot stage hooks into $hooks_dir"; }
       [ -r "$hooks_dir/pre-push/secret-guard.sh" ] && [ -x "$hooks_dir/shims/pre-push" ] \
-        || { rm -rf "$lock_file" "$hooks_dir"; rmdir "$lock_dir" 2>/dev/null || true; die "staged hooks lack secret-guard or pre-push shim"; }
-      trap 'rm -rf "$lock_file" "$hooks_dir"; rmdir "$lock_dir" 2>/dev/null || true' EXIT
+        || { rm -rf "$hooks_dir"; rmdir "$lock_dir" 2>/dev/null || true; die "staged hooks lack secret-guard or pre-push shim"; }
+      trap 'rm -rf "$hooks_dir"; rmdir "$lock_dir" 2>/dev/null || true' EXIT
     fi
     show_or_run "${args[@]}"
     echo "image: $GHCR:$tag"

@@ -7,4 +7,7 @@ The devcontainer commands run `image/scripts/post-create.sh` and `image/scripts/
 Outside a Codespace on this repository, they run from a checkout of it at `~/.digio/github`, which each start pulls.
 They use Michelin at `~/.digio/michelin` (`DIGIO_MICHELIN_ROOT`) and digio-skills at `~/devs/digio-skills`.
 `DIGIO_SKILLS_ROOT` selects a different skills checkout.
-The image installs the SkillPort virtual environment at `/opt/digio/skillport-venv` from the unpinned digio-skills requirements, using the latest stable public packages.
+
+The image installs the [Skills Manager](https://github.com/xingkongliang/skills-manager) CLI at `/usr/local/bin/skills-manager-cli` with `image/scripts/skills-manager-cli.sh`.
+That script pins one release and checks its SHA-256, because the CLI writes into each agent's skills folder.
+It is the one tool outside `image/references/tools.tsv`, whose rows track the latest stable release.

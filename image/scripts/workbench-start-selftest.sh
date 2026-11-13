@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016 # the fixture scripts expand their variables when they run
-# The start scripts keep the workbench checkout current and configure its SkillPort profile.
+# The start scripts keep the workbench checkout current and install the workbench skills.
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -45,11 +45,10 @@ if [ "${1:-}" = clone ]; then
   mkdir -p "$target/.git"
 fi
 STUB
-for command in skillport-mcp skillport claude codex; do
+for command in claude codex; do
   cat > "$TEST_DIR/bin/$command" <<'STUB'
 #!/usr/bin/env bash
 echo "${0##*/} $*" >> "$CALLS"
-[ -z "${FAIL_skillport:-}" ]
 STUB
   chmod +x "$TEST_DIR/bin/$command"
 done
@@ -61,13 +60,10 @@ echo "op $*" >> "$CALLS"
 [ "$1 $2 $3" = "inject --force --out-file" ] || exit 2
 sed 's|{{ op://orchestrator/DIGIO_HISTORY_DATABASE_URL/credential }}|postgres://fixture-history|' > "$4"
 STUB
-# post-start runs the importer with the python beside skillport-mcp, the venv's.
-printf '#!/usr/bin/env bash\nexec python3 "$@"\n' > "$TEST_DIR/bin/python"
-mkdir -p "$TEST_DIR/skills-template/skills/skill-search"
-printf 'workbench\tcommon,workbench,third-party\n' > "$TEST_DIR/skills-template/consumers.tsv"
+# The installer's own self-test in digio-skills drives the real CLI; here it records its call and the agent folders.
 mkdir -p "$TEST_DIR/skills-template/lib"
-printf 'import os, sys\nopen(os.environ["CALLS"], "a").write("skillport-sets.py " + " ".join(sys.argv[1:]) + "\\n")\nsys.exit(1 if os.environ.get("FAIL_skillport") else 0)\n' \
-  > "$TEST_DIR/skills-template/lib/skillport-sets.py"
+printf '#!/usr/bin/env bash\necho "skills-install.sh $* claude=$([ -d "$HOME/.claude" ] && echo y) codex=$([ -d "$HOME/.codex" ] && echo y)" >> "$CALLS"\n[ -z "${FAIL_skills:-}" ]\n' \
+  > "$TEST_DIR/skills-template/lib/skills-install.sh"
 for script in install-briefs session-close; do
   printf '#!/usr/bin/env bash\necho "%s.sh $*" >> "$CALLS"\n' "$script" \
     > "$TEST_DIR/skills-template/skills/$script/scripts/$script.sh"
@@ -122,19 +118,20 @@ grep -Fq "WARN: session export: op cannot read op://orchestrator/DIGIO_HISTORY_D
 
 : > "$CALLS"
 home="$(fixture_home post-start-clone)"
-HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" \
+mkdir -p "$home/.claude/skills"; ln -s "$home/devs/digio-skills/skills/old" "$home/.claude/skills/old"
+ln -s "$TEST_DIR/elsewhere" "$home/.claude/skills/kept"
+HOME="$home" \
   bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 \
   || fail "post-start failed after a fresh clone: $(cat "$TEST_DIR/out")"
 grep -Fq "git clone -q https://github.com/digio-nz/digio-skills.git $home/devs/digio-skills" "$CALLS" \
   || fail "post-start did not clone digio-skills into ~/devs: $(cat "$CALLS")"
-grep -Fxq "skillport-sets.py $home/devs/digio-skills $TEST_DIR/bin/skillport" "$CALLS" \
-  || fail "post-start did not import the skill sets with the digio-skills importer: $(cat "$CALLS")"
-grep -Fxq "skillport validate $home/devs/digio-skills/skills" "$CALLS" \
-  || fail "post-start did not validate with public SkillPort"
-grep -Fq 'SKILLPORT_ENABLED_CATEGORIES=common,workbench,third-party' "$CALLS" \
-  || fail "post-start did not use the consumer table"
-grep -Fq " -- $TEST_DIR/bin/skillport-mcp" "$CALLS" \
-  || fail "post-start did not configure the public stdio executable"
+grep -Fxq "skills-install.sh apply workbench claude=y codex=y" "$CALLS" \
+  || fail "post-start did not install the workbench skills after making the agent folders: $(cat "$CALLS")"
+[ ! -L "$home/.claude/skills/old" ] && [ -L "$home/.claude/skills/kept" ] \
+  || fail "post-start did not remove only the native link into the skills checkout"
+grep -Fxq "codex mcp remove skillport" "$CALLS" && grep -Fxq "claude mcp remove --scope user skillport" "$CALLS" \
+  || fail "post-start did not remove the old MCP entries: $(cat "$CALLS")"
+! grep -q "mcp add" "$CALLS" || fail "post-start added an MCP server: $(cat "$CALLS")"
 grep -Fxq "session-export-sweep.sh start $home/devs/digio-skills" "$CALLS" \
   || fail "post-start did not schedule session exports from the skills checkout"
 ! grep -q "humanlayer-daemon.sh" "$CALLS" || fail "post-start started the HumanLayer daemon: $(cat "$CALLS")"
@@ -151,7 +148,7 @@ home="$(fixture_home post-start-pull)"
 mkdir -p "$home/devs"
 cp -R "$TEST_DIR/skills-template" "$home/devs/digio-skills"
 mkdir -p "$home/devs/digio-skills/.git"
-HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" \
+HOME="$home" \
   bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 \
   || fail "post-start failed with an existing checkout: $(cat "$TEST_DIR/out")"
 grep -Fxq "git -C $home/devs/digio-skills pull -q --ff-only" "$CALLS" \
@@ -160,13 +157,13 @@ grep -Fxq "git -C $home/devs/digio-skills pull -q --ff-only" "$CALLS" \
 : > "$CALLS"
 home="$(fixture_home identity-kept)"
 mkdir -p "$home/devs/digio-history"; echo DATABASE_URL=x > "$home/devs/digio-history/.env.local"
-HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" GIT_IDENTITY=someone \
+HOME="$home" GIT_IDENTITY=someone \
   bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 || fail "post-start failed with a git identity: $(cat "$TEST_DIR/out")"
 ! grep -Eq '^git config --global user\.(name|email) ' "$CALLS" || fail "post-start replaced an existing git identity: $(cat "$CALLS")"
 ! grep -q 'WARN: session export' "$TEST_DIR/out" || fail "post-start warned about session export with a history file: $(cat "$TEST_DIR/out")"
 
 home="$(fixture_home brief-drift)"
-HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" GIT_STATUS=' M briefs/AGENTS.md' GIT_BEHIND=3 \
+HOME="$home" GIT_STATUS=' M briefs/AGENTS.md' GIT_BEHIND=3 \
   bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 || fail "post-start failed on a drifted brief checkout; it warns only: $(cat "$TEST_DIR/out")"
 grep -Fq "WARN: briefs: $home/.digio/michelin has local changes" "$TEST_DIR/out" || fail "post-start did not warn about local brief changes: $(cat "$TEST_DIR/out")"
 grep -Fq "WARN: briefs: $home/.digio/michelin is 3 commits behind origin/main" "$TEST_DIR/out" || fail "post-start did not warn that the briefs are behind: $(cat "$TEST_DIR/out")"
@@ -176,17 +173,17 @@ HOME="$home" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1
 grep -Fq "WARN: briefs: $home/.digio/michelin is missing" "$TEST_DIR/out" || fail "post-start did not warn that the briefs are missing: $(cat "$TEST_DIR/out")"
 
 : > "$CALLS"
-home="$(fixture_home skillport-failure)"
-if HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" FAIL_skillport=1 \
+home="$(fixture_home skills-failure)"
+if HOME="$home" FAIL_skills=1 \
   bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1; then
-  fail "post-start exited 0 when SkillPort setup failed"
+  fail "post-start exited 0 when the skills install failed"
 fi
-grep -Fq 'SkillPort setup failed' "$TEST_DIR/out" || fail "post-start did not name the SkillPort failure"
+grep -Fq 'skills: install failed' "$TEST_DIR/out" || fail "post-start did not name the skills install failure"
 grep -Fq 'install-briefs.sh apply' "$CALLS" || fail "post-start stopped before installing briefs"
 
 : > "$CALLS"
 home="$(fixture_home scheduler-failure)"
-if HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" FAIL_session_export_scheduler=1 \
+if HOME="$home" FAIL_session_export_scheduler=1 \
   bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1; then
   fail "post-start exited 0 when the session-export scheduler failed"
 fi
@@ -195,7 +192,7 @@ grep -Fq 'session-export scheduler failed to start' "$TEST_DIR/out" \
 
 : > "$CALLS"
 start_with_workspaces() { # <home> <workspaces>
-  HOME="$1" DIGIO_WORKSPACES="$2" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" \
+  HOME="$1" DIGIO_WORKSPACES="$2" \
     bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1
 }
 : > "$CALLS"
@@ -307,4 +304,4 @@ grep -Fxq 'CMD ["/usr/local/bin/workbench-start.sh"]' "$DIR/../assets/image/Dock
 grep -Fq '"BASH_ENV": "/home/vscode/.digio/node-auth-token.sh"' "$DIR/../../.devcontainer/devcontainer.json" \
   || fail "devcontainer.json BASH_ENV no longer matches workbench-start.sh"
 
-echo "workbench start self-test passed: the image CMD runs the dev container start-up, then T3, post-start sets the hidden-email git identity and warns on drifted briefs, post-create writes the session-export store from 1Password or warns, a rebuild keeps ~/devs and the logins, post-start links ~/devs to the workspace devs folder, keeps Codespace logins on the kept disk, routes Codespace git over HTTPS, configures public SkillPort, leaves the HumanLayer daemon stopped and fails loudly"
+echo "workbench start self-test passed: the image CMD runs the dev container start-up, then T3, post-start sets the hidden-email git identity and warns on drifted briefs, post-create writes the session-export store from 1Password or warns, a rebuild keeps ~/devs and the logins, post-start links ~/devs to the workspace devs folder, keeps Codespace logins on the kept disk, routes Codespace git over HTTPS, installs the workbench skills, leaves the HumanLayer daemon stopped and fails loudly"

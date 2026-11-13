@@ -11,13 +11,6 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates build-essential gnupg python3-pip python3-venv \
  && rm -rf /var/lib/apt/lists/*
 
-COPY .build/skillport-requirements.txt /tmp/skillport-requirements.txt
-RUN python3 -m venv /opt/digio/skillport-venv \
- && /opt/digio/skillport-venv/bin/pip install --no-cache-dir --upgrade -r /tmp/skillport-requirements.txt \
- && ln -s /opt/digio/skillport-venv/bin/skillport /usr/local/bin/skillport \
- && ln -s /opt/digio/skillport-venv/bin/skillport-mcp /usr/local/bin/skillport-mcp \
- && rm /tmp/skillport-requirements.txt
-
 COPY references/tools.tsv scripts/tools.sh /opt/digio/tools/
 RUN chmod 0755 /opt/digio/tools/tools.sh
 
@@ -30,6 +23,10 @@ RUN /opt/digio/tools/tools.sh apply --prefix /usr/local --sources nodesource
 RUN /opt/digio/tools/tools.sh apply --prefix /usr/local --sources npm \
  && npm cache clean --force
 RUN /opt/digio/tools/tools.sh apply --prefix /usr/local --sources installer,gh-release
+
+# The one tool at a pinned release with a checksum, outside tools.tsv, whose rows track latest stable.
+COPY scripts/skills-manager-cli.sh /opt/digio/tools/
+RUN /opt/digio/tools/skills-manager-cli.sh install --prefix /usr/local
 
 # The browser lives in the image so container create does no download. Shared path, readable by the user.
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright

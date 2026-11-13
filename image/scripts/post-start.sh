@@ -109,62 +109,25 @@ if [ -d "$SKILLS_DIR/.git" ]; then
     # Through the ~/devs link, npm rewrites the lockfile's paths and the next pull refuses the dirty checkout.
     npm install --prefix "$(cd "$SKILL_REPO" && pwd -P)" --omit=dev --no-audit --no-fund --silent \
       || echo "digio-skills dependencies failed; skills without npm dependencies remain available" >&2
-    configure_skillport() (
+    install_skills() (
       set -e
-      trap 'echo "SkillPort: $step failed" >&2' ERR
       skills="$SKILL_REPO"
-      mcp="${DIGIO_SKILLPORT_MCP:-/opt/digio/skillport-venv/bin/skillport-mcp}"
-      cli="${DIGIO_SKILLPORT_CLI:-${mcp%-mcp}}"
-      categories="$(awk -F '\t' '$1 == "workbench" { print $2 }' "$skills/consumers.tsv")"
-      [ -n "$categories" ] || { echo 'SkillPort: unknown consumer workbench' >&2; exit 1; }
-      step='SkillPort installation'
-      "$mcp" --help >/dev/null
-      # The importer needs the venv's python: the system python3 has no yaml module.
-      "${mcp%/*}/python" "$skills/lib/skillport-sets.py" "$skills" "$cli"
-      step='SkillPort validation workbench'
-      "$cli" validate "$skills/skills"
-      entry_env=(
-        "SKILLPORT_SKILLS_DIR=$skills/skills"
-        "SKILLPORT_DB_PATH=$HOME/.skillport/workbench/skills.lancedb"
-        "SKILLPORT_ENABLED_CATEGORIES=$categories"
-        'SKILLPORT_ENABLED_SKILLS='
-        'SKILLPORT_ENABLED_NAMESPACES='
-        'SKILLPORT_CORE_SKILLS_MODE=auto'
-        'SKILLPORT_EMBEDDING_PROVIDER=none'
-        'SKILLPORT_SEARCH_LIMIT=100'
-      )
-      claude_env=() codex_env=()
-      for value in "${entry_env[@]}"; do
-        claude_env+=(-e "$value")
-        codex_env+=(--env "$value")
-      done
-      step='SkillPort native links workbench'
+      # A kept Codex folder can name an MCP server that the image no longer has, and a link into the checkout
+      # would block a deploy of the same name.
+      codex mcp remove skillport >/dev/null 2>&1 || true
+      claude mcp remove --scope user skillport >/dev/null 2>&1 || true
       for folder in "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.codex/skills" "$HOME/.pi/agent/skills" "$HOME/.grok/skills"; do
         for link in "$folder"/*; do
-          [ -L "$link" ] && [ "${link##*/}" != skill-search ] || continue
-          target="$(readlink "$link")"
-          case "$target" in "$skills/skills/"*|"$HOME/.digio/skill-sets/"*|/opt/skills/*|*/node_modules/*-axi/skills/*) rm "$link" ;; esac
+          [ -L "$link" ] || continue
+          case "$(readlink "$link")" in "$skills/skills/"*|"$HOME/.digio/skill-sets/"*|/opt/skills/*|*/node_modules/*-axi/skills/*) rm "$link" ;; esac
         done
       done
-      for folder in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills" "$HOME/.agents/skills"; do
-        mkdir -p "$folder"
-        if [ -e "$folder/skill-search" ] && [ ! -L "$folder/skill-search" ]; then
-          echo "SkillPort: $folder/skill-search is not a link" >&2; exit 1
-        fi
-        ln -sfn "$skills/skills/skill-search" "$folder/skill-search"
-      done
-      step='SkillPort configuration workbench'
-      claude mcp remove --scope user skillport >/dev/null 2>&1 || true
-      claude mcp add --scope user skillport "${claude_env[@]}" -- "$mcp"
-      codex mcp remove skillport >/dev/null 2>&1 || true
-      codex mcp add skillport "${codex_env[@]}" -- "$mcp"
-      claude mcp get skillport >/dev/null
-      codex mcp get skillport --json >/dev/null
+      # Skills Manager counts an agent as present when its home folder exists.
+      mkdir -p "$HOME/.claude" "$HOME/.codex"
+      bash "$skills/lib/skills-install.sh" apply workbench
     )
-    configure_skillport
-    skillport_code=$?
-    if [ "$skillport_code" -ne 0 ]; then
-      echo "SkillPort setup failed: rerun $SCRIPT_DIR/post-start.sh" >&2
+    if ! install_skills; then
+      echo "skills: install failed: rerun $SCRIPT_DIR/post-start.sh" >&2
       failed=1
     fi
     bash "$SKILL_REPO/skills/install-briefs/scripts/install-briefs.sh" apply --quiet || true

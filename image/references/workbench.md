@@ -69,7 +69,7 @@ digio-michelin's devcontainer config and the image's `CMD` run them from a digio
   It clones digio-michelin to `~/.digio/michelin` and sets up the npm auth lines with `npm-auth.sh` and `node-auth-token.sh`, the same two scripts a physical machine runs.
   Where `DIGIO_HISTORY_DATABASE_URL` is unset, it writes `DATABASE_URL` to `~/devs/digio-history/.env.local` from `op://orchestrator/DIGIO_HISTORY_DATABASE_URL/credential`, once, if that file is missing. It prints a `WARN:` line when `op` cannot read the value.
 - `scripts/post-start.sh` runs next, and at each start after that.
-  It joins the tailnet, sets the global Git identity to `digbycampbell` with `96467498+digbycampbell@users.noreply.github.com` when none is set, pulls digio-michelin, clones or pulls `~/devs/digio-skills`, and configures public `skillport-mcp` with the workbench categories in digio-skills `consumers.tsv`.
+  It joins the tailnet, sets the global Git identity to `digbycampbell` with `96467498+digbycampbell@users.noreply.github.com` when none is set, pulls digio-michelin, clones or pulls `~/devs/digio-skills`, and installs the workbench skills with its `lib/skills-install.sh`.
   It prints a `WARN:` line when `~/.digio/michelin` is missing, has local changes or is behind `origin/main`, because the briefs then stay stale. A warning does not fail the start.
   It also writes the briefs, installs the skill dependencies, installs the session export hook, and starts the session export sweep.
   It does not start the HumanLayer daemon.
@@ -80,8 +80,7 @@ It sets the same `containerEnv`, clones or pulls `~/.digio/github`, and runs the
 Its log, `~/.local/state/digio-workbench/start.log`, ends with `start: exit N`.
 On msi, `/workspaces/devs` is the host's `/data/devs`, and the home is a named volume, so a recreate keeps the repos, the logins, `~/.digio/github` and `~/.digio/michelin`.
 So a change to the start-up scripts, to the briefs in digio-michelin or to digio-skills reaches a workbench at its next start, with no rebuild.
-At start, the digio-skills importer, `lib/skillport-sets.py`, imports the third-party sets into namespaces under the skills checkout.
-SkillPort keeps only `skill-search` in each harness's native skills folder.
+At start, `post-start.sh` removes a native skill link into the skills checkout, because Skills Manager makes the links now.
 The session export needs the `DIGIO_HISTORY_DATABASE_URL` secret or `~/devs/digio-history/.env.local`; `post-start.sh` prints a `WARN:` line when it has neither.
 The sweep loop runs `session-export-sweep.sh once` every 15 minutes, the entrypoint a physical machine's timer runs too.
 It writes its log to `${XDG_STATE_HOME:-$HOME/.local/state}/digio-workbench/session-export-sweep.log`.
@@ -95,7 +94,7 @@ It writes its log to `${XDG_STATE_HOME:-$HOME/.local/state}/digio-workbench/sess
 | A repo you edit | `~/devs/<repo>`, which is `/workspaces/devs/<repo>` | A rebuild keeps it, and the path matches the machines. |
 | The Codespace's own repo, digio-michelin | `/workspaces/digio-michelin`, linked as `~/devs/digio-michelin` | Codespaces clones it there, and VS Code opens it. |
 | The factory's runtime copy of digio-michelin | `~/.digio/michelin` | Create clones it again. Start pulls it with `--ff-only`, so an edit there stops the pull. |
-| Skills | `~/devs/digio-skills`, on the workspace disk | Start clones or pulls it, then configures public `skillport-mcp` with the workbench categories in digio-skills `consumers.tsv`. |
+| Skills | `~/devs/digio-skills`, on the workspace disk | Start clones or pulls it, then installs the workbench skills from it with Skills Manager. |
 
 Do not edit the runtime copy.
 To change digio-michelin, work in `/workspaces/digio-michelin` on a branch, and open a PR.
