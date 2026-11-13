@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Runs once, after the container is created: clone digio-michelin, and write the npm auth lines and the
-# NODE_AUTH_TOKEN file that the shell profiles source.
+# Runs once, after the container is created: clone digio-michelin, check that the image's git hooks guard git push, and
+# write the npm auth lines and the NODE_AUTH_TOKEN file that the shell profiles source.
 # post-start.sh runs next, and at every start after that.
 # A failed step is reported on stderr and the script exits 1 after running the rest.
 set -euo pipefail
@@ -14,23 +14,13 @@ else
 fi
 export DIGIO_MICHELIN_ROOT="$SKILLS_DIR"
 
-# Point every git push in this Codespace / desk container at Michelin's pre-push shim (secret-guard, then the
-# repo's own .git/hooks and .githooks). The workbench image also bakes a system hooksPath at
-# /opt/digio/michelin-hooks/shims; the global config here wins and tracks the cloned checkout.
-# Worker sandboxes pin a different hooksPath via GIT_CONFIG_* (digio-skills dispatch) and call the
-# guard from worker-pipeline.ts, so they do not double-run this path.
-if [ -x "$SKILLS_DIR/hooks/install.sh" ]; then
-  bash "$SKILLS_DIR/hooks/install.sh" --global     || { echo "hooks: global secret-guard install failed; git push is not guarded" >&2; failed=1; }
-else
-  echo "hooks: $SKILLS_DIR/hooks/install.sh missing; git push is not guarded" >&2
-  failed=1
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+bash "$SCRIPT_DIR/git-hooks.sh" || failed=1
 
 # npm-auth.sh writes the @digio-nz scope line and the auth line, which names NODE_AUTH_TOKEN and never holds a value.
 # node-auth-token.sh sets NODE_AUTH_TOKEN: the Codespace's GITHUB_TOKEN, else the desk workbench's gh token. It is copied
 # to ~/.digio/node-auth-token.sh, which devcontainer.json names in BASH_ENV (non-interactive bash) and which the profiles
 # source. A profile that is a symlink belongs to a dotfiles checkout, so it is skipped.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 bash "$SCRIPT_DIR/npm-auth.sh" apply >/dev/null || { echo "npm auth: cannot write ~/.npmrc" >&2; failed=1; }
 AUTH_ENV="$HOME/.digio/node-auth-token.sh"
 mkdir -p "$HOME/.digio"

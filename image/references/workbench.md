@@ -66,10 +66,10 @@ A Codespace on digio-nz/.github runs them from its own checkout.
 digio-michelin's devcontainer config and the image's `CMD` run them from a digio-nz/.github checkout at `~/.digio/github`, which each start pulls.
 
 - The dev container runs `scripts/post-create.sh` once after it creates the container.
-  It clones digio-michelin to `~/.digio/michelin` and sets up the npm auth lines with `npm-auth.sh` and `node-auth-token.sh`, the same two scripts a physical machine runs.
+  It clones digio-michelin to `~/.digio/michelin`, runs `git-hooks.sh`, and sets up the npm auth lines with `npm-auth.sh` and `node-auth-token.sh`, the same two scripts a physical machine runs.
   Where `DIGIO_HISTORY_DATABASE_URL` is unset, it writes `DATABASE_URL` to `~/devs/digio-history/.env.local` from `op://orchestrator/DIGIO_HISTORY_DATABASE_URL/credential`, once, if that file is missing. It prints a `WARN:` line when `op` cannot read the value.
 - `scripts/post-start.sh` runs next, and at each start after that.
-  It joins the tailnet, sets the global Git identity to `digbycampbell` with `96467498+digbycampbell@users.noreply.github.com` when none is set, pulls digio-michelin, clones or pulls `~/devs/digio-skills`, and configures public `skillport-mcp` with the workbench categories in digio-skills `consumers.tsv`.
+  It joins the tailnet, sets the global Git identity to `digbycampbell` with `96467498+digbycampbell@users.noreply.github.com` when none is set, runs `git-hooks.sh`, pulls digio-michelin, clones or pulls `~/devs/digio-skills`, and configures public `skillport-mcp` with the workbench categories in digio-skills `consumers.tsv`.
   It prints a `WARN:` line when `~/.digio/michelin` is missing, has local changes or is behind `origin/main`, because the briefs then stay stale. A warning does not fail the start.
   It also writes the briefs, installs the skill dependencies, installs the session export hook, and starts the session export sweep.
   It does not start the HumanLayer daemon.
@@ -80,6 +80,10 @@ It sets the same `containerEnv`, clones or pulls `~/.digio/github`, and runs the
 Its log, `~/.local/state/digio-workbench/start.log`, ends with `start: exit N`.
 On msi, `/workspaces/devs` is the host's `/data/devs`, and the home is a named volume, so a recreate keeps the repos, the logins, `~/.digio/github` and `~/.digio/michelin`.
 So a change to the start-up scripts, to the briefs in digio-michelin or to digio-skills reaches a workbench at its next start, with no rebuild.
+The image holds this repository's `hooks/` at `/opt/digio/michelin-hooks`, and its system gitconfig sets `core.hooksPath` to their shims, so each `git push` runs secret-guard.
+The digio-michelin clone supplies the briefs, not the hooks.
+`git-hooks.sh` removes a global `core.hooksPath` in `~/.digio/michelin`, which a home from an older image holds and which overrides the image's.
+It fails the create or the start when no pre-push hook is in effect, and its message names the path.
 At start, the digio-skills importer, `lib/skillport-sets.py`, imports the third-party sets into namespaces under the skills checkout.
 SkillPort keeps only `skill-search` in each harness's native skills folder.
 The session export needs the `DIGIO_HISTORY_DATABASE_URL` secret or `~/devs/digio-history/.env.local`; `post-start.sh` prints a `WARN:` line when it has neither.

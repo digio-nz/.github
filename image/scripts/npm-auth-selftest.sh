@@ -40,19 +40,21 @@ printf '#!/usr/bin/env bash\n[ "${1:-}" = auth ] && [ "${2:-}" = token ] && { ca
   "$TEST_DIR/sentinel" > "$TEST_DIR/bin/gh"
 chmod +x "$TEST_DIR/bin/gh"
 export PATH="$TEST_DIR/bin:$PATH"
+# post-create.sh fails when no git hooksPath is in effect. The image names its baked hooks in the system gitconfig; this file stands in for it.
+export GIT_CONFIG_SYSTEM="$TEST_DIR/system.gitconfig"
+git config --file "$GIT_CONFIG_SYSTEM" core.hooksPath "$(cd "$DIR/../../hooks/shims" && pwd -P)"
 
 run_post_create() {
   local home="$1"
   mkdir -p "$home/.digio/michelin"
   git -C "$home/.digio/michelin" init -q
-  # post-create installs the clone's git hooks globally and fails without them.
-  cp -a "$DIR/../../hooks" "$home/.digio/michelin/hooks"
   mkdir -p "$home/.digio/skills"
   git -C "$home/.digio/skills" init -q
-  HOME="$home" DIGIO_SKILLS_ROOT="$home/.digio/skills" bash "$DIR/post-create.sh" > "$TEST_DIR/out" 2>&1 \
+  HOME="$home" GIT_CONFIG_GLOBAL="$home/.gitconfig" DIGIO_SKILLS_ROOT="$home/.digio/skills" bash "$DIR/post-create.sh" > "$TEST_DIR/out" 2>&1 \
     || fail "post-create.sh failed: $(cat "$TEST_DIR/out")"
-  [ "$(HOME="$home" GIT_CONFIG_NOSYSTEM=1 git config --global --get core.hooksPath)" = "$(cd "$home/.digio/michelin/hooks/shims" && pwd -P)" ] \
-    || fail "post-create.sh did not point the global hooksPath at the michelin shims"
+  # A global hooksPath overrides the image's baked hooks, so post-create.sh must leave none.
+  [ -z "$(HOME="$home" GIT_CONFIG_GLOBAL="$home/.gitconfig" git config --global --get core.hooksPath || true)" ] \
+    || fail "post-create.sh set a global hooksPath"
 }
 
 # The BASH_ENV that devcontainer.json sets for the container; the checks below pass it to each shell as the container does.

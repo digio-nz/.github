@@ -59,7 +59,9 @@ grep -Fq "stub tailscale up error" <<< "$failure_output" || fail "tailscale did 
 grep -Fq "tailnet join failed" <<< "$failure_output" || fail "the join failure was not reported"
 
 mkdir -p "$TEST_DIR/home"
-if ! start_output="$(HOME="$TEST_DIR/home" TS_AUTH_KEY=selftest-auth-key TAILSCALE_UP_FAIL=1 bash "$DIR/post-start.sh" 2>&1)"; then
+# post-start.sh fails when no git hooksPath is in effect. The image names its baked hooks in the system gitconfig; this file stands in for it.
+git config --file "$TEST_DIR/system.gitconfig" core.hooksPath "$(cd "$DIR/../../hooks/shims" && pwd -P)"
+if ! start_output="$(HOME="$TEST_DIR/home" GIT_CONFIG_SYSTEM="$TEST_DIR/system.gitconfig" GIT_CONFIG_GLOBAL="$TEST_DIR/home/.gitconfig" TS_AUTH_KEY=selftest-auth-key TAILSCALE_UP_FAIL=1 bash "$DIR/post-start.sh" 2>&1)"; then
   fail "a tailnet failure blocked container startup"
 fi
 grep -Fq "tailnet: setup failed; container startup will continue" <<< "$start_output" || fail "container startup did not report the tolerated failure"

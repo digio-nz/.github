@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Runs at every container start: join the tailnet, and refresh Michelin, skills and briefs.
-# A failed required Michelin step is reported on stderr, and the script exits 1 after running every step.
+# Runs at every container start: join the tailnet, check the git hooks, and refresh Michelin, skills and briefs.
+# A failed hooks check or required Michelin step is reported on stderr, and the script exits 1 after running every step.
 # A tailnet failure is reported but does not fail the start.
 set -uo pipefail
 failed=0
@@ -77,6 +77,8 @@ set_identity() { [ -n "$(git config --global "$1")" ] || git config --global "$1
 if ! { set_identity user.name digbycampbell && set_identity user.email 96467498+digbycampbell@users.noreply.github.com; }; then
   echo "git: cannot set the global identity" >&2; failed=1
 fi
+
+bash "$SCRIPT_DIR/git-hooks.sh" || failed=1
 
 SKILLS_DIR="$HOME/.digio/michelin"
 SKILL_REPO="${DIGIO_SKILLS_ROOT:-$HOME/devs/digio-skills}"
