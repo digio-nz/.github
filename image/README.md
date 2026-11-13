@@ -8,4 +8,7 @@ Outside a Codespace on this repository, they run from a checkout of it at `~/.di
 They use Michelin at `~/.digio/michelin` (`DIGIO_MICHELIN_ROOT`) and digio-skills at `~/devs/digio-skills`.
 The git hooks are the image's own copy of `hooks/`; `image/scripts/git-hooks.sh` fails a start when no pre-push hook is in effect.
 `DIGIO_SKILLS_ROOT` selects a different skills checkout.
-The image installs the SkillPort virtual environment at `/opt/digio/skillport-venv` from the unpinned digio-skills requirements, using the latest stable public packages.
+
+The image holds [skills-manager-cli](https://github.com/xingkongliang/skills-manager) in `/usr/local/bin`.
+The Dockerfile pins its version and the checksum of the release asset for each architecture.
+`post-start.sh` uses it to link the skills of the `factory` preset into `~/.claude/skills` and `~/.codex/skills`.

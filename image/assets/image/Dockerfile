@@ -11,12 +11,16 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates build-essential gnupg python3-pip python3-venv \
  && rm -rf /var/lib/apt/lists/*
 
-COPY .build/skillport-requirements.txt /tmp/skillport-requirements.txt
-RUN python3 -m venv /opt/digio/skillport-venv \
- && /opt/digio/skillport-venv/bin/pip install --no-cache-dir --upgrade -r /tmp/skillport-requirements.txt \
- && ln -s /opt/digio/skillport-venv/bin/skillport /usr/local/bin/skillport \
- && ln -s /opt/digio/skillport-venv/bin/skillport-mcp /usr/local/bin/skillport-mcp \
- && rm /tmp/skillport-requirements.txt
+# skills-manager-cli links the skills of a preset into each agent's skills folder. tools.tsv takes only latest, and this
+# version is pinned with the checksum of each architecture's release asset, so the install is here.
+RUN case "$(dpkg --print-architecture)" in \
+      amd64) asset=skills-manager-cli-Linux-x64 sum=3be08b67e1ca1b035e948848242412ed7ff5b592a3c82cfb9e3728eede8b2a6a ;; \
+      arm64) asset=skills-manager-cli-Linux-arm64 sum=02d89fffb94a0b5b9b55bfb7165d7c58bd45ae284e7ea579be01b144eca91c66 ;; \
+      *) echo "skills-manager-cli: no pinned release for $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac \
+ && curl -fsSL -o /usr/local/bin/skills-manager-cli "https://github.com/xingkongliang/skills-manager/releases/download/v1.44.0/$asset" \
+ && echo "$sum  /usr/local/bin/skills-manager-cli" | sha256sum -c - \
+ && chmod 0755 /usr/local/bin/skills-manager-cli
 
 COPY references/tools.tsv scripts/tools.sh /opt/digio/tools/
 RUN chmod 0755 /opt/digio/tools/tools.sh

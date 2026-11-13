@@ -21,8 +21,8 @@ NO_MISTAKES_BIN="$(command -v no-mistakes)" || fail "no-mistakes is not on PATH"
 "$NO_MISTAKES_BIN" --version >/dev/null \
   || fail "no-mistakes did not report a version"
 
-/opt/digio/skillport-venv/bin/python -c 'import skillport' \
-  || fail "the SkillPort virtual environment cannot import skillport"
+skills-manager-cli --version >/dev/null \
+  || fail "skills-manager-cli did not report a version"
 
 # Every push in the image runs secret-guard: the system gitconfig points at the baked shims, and a credential-shaped
 # push to a throwaway local remote is refused through them.
@@ -54,10 +54,18 @@ TEST_HOME="$(mktemp -d)"
 export HOME="$TEST_HOME"
 trap 'rm -rf "$TEST_HOME"' EXIT
 
-/opt/digio/skillport-venv/bin/skillport-mcp --help >/dev/null \
-  || fail "public skillport-mcp cannot start"
-/opt/digio/skillport-venv/bin/skillport validate "$DIGIO_SKILLS_ROOT/skills" \
-  || fail "the skills checkout fails public validation"
+# The deploy that post-start.sh runs, on the pinned skills checkout: each link of the factory preset reaches a skill.
+mkdir -p "$HOME/.claude/skills" "$HOME/.codex/skills"
+for agent in claude_code codex; do
+  skills-manager-cli --skills-root "$(cd "$DIGIO_SKILLS_ROOT/skills" && pwd -P)" presets deploy factory --agent "$agent" >/dev/null \
+    || fail "skills-manager-cli cannot deploy the factory preset for $agent"
+done
+for folder in "$HOME/.claude/skills" "$HOME/.codex/skills"; do
+  [ -n "$(find "$folder" -maxdepth 1 -type l 2>/dev/null)" ] || fail "the factory preset put no link in $folder"
+  for link in "$folder"/*; do
+    [ -f "$link/SKILL.md" ] || fail "$link does not reach a skill"
+  done
+done
 
 bash "$DIR/session-export-sweep-selftest.sh"
 bash "$DIR/humanlayer-daemon-selftest.sh"
@@ -68,4 +76,4 @@ bash "$DIR/npm-auth-selftest.sh"
 # The start scripts' hooks check, on the image's own system gitconfig and a home with no global one.
 bash "$DIR/git-hooks.sh" || fail "git-hooks.sh does not accept the image's baked hooksPath"
 
-echo "image self-test passed: tools, SkillPort, git hooks and worker setup"
+echo "image self-test passed: tools, skills, git hooks and worker setup"
