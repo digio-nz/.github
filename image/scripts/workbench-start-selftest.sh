@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016 # the fixture scripts expand their variables when they run
-# The start scripts keep the workbench checkout current and configure its SkillPort profile.
+# The start scripts keep the workbench checkout current and link its skills.
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -23,9 +23,8 @@ printf '#!/usr/bin/env bash\necho "session-export-sweep.sh $*" >> "$CALLS"\n[ -z
 printf '#!/usr/bin/env bash\necho "humanlayer-daemon.sh $*" >> "$CALLS"\n' \
   > "$TEST_DIR/devcontainer/humanlayer-daemon.sh"
 
-mkdir -p "$TEST_DIR/bin" "$TEST_DIR/skills-template/skills/skill-sets/scripts" \
-  "$TEST_DIR/skills-template/skills/install-briefs/scripts" "$TEST_DIR/skills-template/skills/session-close/scripts" \
-  "$TEST_DIR/skills-template/scripts"
+mkdir -p "$TEST_DIR/bin" "$TEST_DIR/skills-template/skills/install-briefs/scripts" \
+  "$TEST_DIR/skills-template/skills/session-close/scripts" "$TEST_DIR/skills-template/scripts"
 for tool in node pnpm gh npm; do
   printf '#!/usr/bin/env bash\n[ "${1:-}" = auth ] && exit 1\necho stub-%s\n' "$tool" > "$TEST_DIR/bin/$tool"
   chmod +x "$TEST_DIR/bin/$tool"
@@ -47,13 +46,21 @@ if [ "${1:-}" = clone ]; then
   mkdir -p "$target/.git"
 fi
 STUB
-for command in skillport-mcp skillport claude codex; do
+cat > "$TEST_DIR/bin/skills-manager-cli" <<'STUB'
+#!/usr/bin/env bash
+echo "${0##*/} $*" >> "$CALLS"
+[ -z "${FAIL_skills:-}" ]
+STUB
+# SKILLPORT_LEFT is a home that an older start configured: mcp get finds the server.
+for command in claude codex; do
   cat > "$TEST_DIR/bin/$command" <<'STUB'
 #!/usr/bin/env bash
 echo "${0##*/} $*" >> "$CALLS"
-[ -z "${FAIL_skillport:-}" ]
+case "$*" in
+  "mcp get skillport") [ -n "${SKILLPORT_LEFT:-}" ] ;;
+  *) [ -z "${FAIL_mcp_remove:-}" ] ;;
+esac
 STUB
-  chmod +x "$TEST_DIR/bin/$command"
 done
 # op inject resolves the one reference post-create may ask for, into the file it names.
 cat > "$TEST_DIR/bin/op" <<'STUB'
@@ -63,13 +70,6 @@ echo "op $*" >> "$CALLS"
 [ "$1 $2 $3" = "inject --force --out-file" ] || exit 2
 sed 's|{{ op://orchestrator/DIGIO_HISTORY_DATABASE_URL/credential }}|postgres://fixture-history|' > "$4"
 STUB
-# post-start runs the importer with the python beside skillport-mcp, the venv's.
-printf '#!/usr/bin/env bash\nexec python3 "$@"\n' > "$TEST_DIR/bin/python"
-mkdir -p "$TEST_DIR/skills-template/skills/skill-search"
-printf 'workbench\tcommon,workbench,third-party\n' > "$TEST_DIR/skills-template/consumers.tsv"
-mkdir -p "$TEST_DIR/skills-template/lib"
-printf 'import os, sys\nopen(os.environ["CALLS"], "a").write("skillport-sets.py " + " ".join(sys.argv[1:]) + "\\n")\nsys.exit(1 if os.environ.get("FAIL_skillport") else 0)\n' \
-  > "$TEST_DIR/skills-template/lib/skillport-sets.py"
 for script in install-briefs session-close; do
   printf '#!/usr/bin/env bash\necho "%s.sh $*" >> "$CALLS"\n' "$script" \
     > "$TEST_DIR/skills-template/skills/$script/scripts/$script.sh"
@@ -93,7 +93,7 @@ fixture_home() {
 home="$(fixture_home post-create)"
 HOME="$home" bash "$TEST_DIR/devcontainer/post-create.sh" > "$TEST_DIR/out" 2>&1 \
   || fail "post-create failed: $(cat "$TEST_DIR/out")"
-! grep -Eq 'skill-sets|skills.py|install-skills|install-briefs' "$CALLS" \
+! grep -Eq 'skills-manager-cli|install-briefs' "$CALLS" \
   || fail "post-create configured skills: $(cat "$CALLS")"
 # The Michelin clone in the fixture has no hooks folder: the image's system hooksPath is the one in effect.
 grep -Fxq "git config --system --type=path --get core.hooksPath" "$CALLS" \
@@ -133,19 +133,16 @@ grep -Fq "WARN: session export: op cannot read op://orchestrator/DIGIO_HISTORY_D
 
 : > "$CALLS"
 home="$(fixture_home post-start-clone)"
-HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" \
-  bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 \
+HOME="$home" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 \
   || fail "post-start failed after a fresh clone: $(cat "$TEST_DIR/out")"
 grep -Fq "git clone -q https://github.com/digio-nz/digio-skills.git $home/devs/digio-skills" "$CALLS" \
   || fail "post-start did not clone digio-skills into ~/devs: $(cat "$CALLS")"
-grep -Fxq "skillport-sets.py $home/devs/digio-skills $TEST_DIR/bin/skillport" "$CALLS" \
-  || fail "post-start did not import the skill sets with the digio-skills importer: $(cat "$CALLS")"
-grep -Fxq "skillport validate $home/devs/digio-skills/skills" "$CALLS" \
-  || fail "post-start did not validate with public SkillPort"
-grep -Fq 'SKILLPORT_ENABLED_CATEGORIES=common,workbench,third-party' "$CALLS" \
-  || fail "post-start did not use the consumer table"
-grep -Fq " -- $TEST_DIR/bin/skillport-mcp" "$CALLS" \
-  || fail "post-start did not configure the public stdio executable"
+for agent in claude_code codex; do
+  grep -Fxq "skills-manager-cli --skills-root $home/devs/digio-skills/skills presets deploy factory --agent $agent" "$CALLS" \
+    || fail "post-start did not deploy the factory preset for $agent: $(cat "$CALLS")"
+done
+[ -d "$home/.claude/skills" ] && [ -d "$home/.codex/skills" ] || fail "post-start did not make the skills folders that the deploy needs"
+! grep -q 'mcp remove' "$CALLS" || fail "post-start removed SkillPort from a home that has none: $(cat "$CALLS")"
 grep -Fxq "session-export-sweep.sh start $home/devs/digio-skills" "$CALLS" \
   || fail "post-start did not schedule session exports from the skills checkout"
 ! grep -q "humanlayer-daemon.sh" "$CALLS" || fail "post-start started the HumanLayer daemon: $(cat "$CALLS")"
@@ -162,8 +159,7 @@ home="$(fixture_home post-start-pull)"
 mkdir -p "$home/devs"
 cp -R "$TEST_DIR/skills-template" "$home/devs/digio-skills"
 mkdir -p "$home/devs/digio-skills/.git"
-HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" \
-  bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 \
+HOME="$home" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 \
   || fail "post-start failed with an existing checkout: $(cat "$TEST_DIR/out")"
 grep -Fxq "git -C $home/devs/digio-skills pull -q --ff-only" "$CALLS" \
   || fail "post-start did not pull the existing skills checkout: $(cat "$CALLS")"
@@ -171,13 +167,13 @@ grep -Fxq "git -C $home/devs/digio-skills pull -q --ff-only" "$CALLS" \
 : > "$CALLS"
 home="$(fixture_home identity-kept)"
 mkdir -p "$home/devs/digio-history"; echo DATABASE_URL=x > "$home/devs/digio-history/.env.local"
-HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" GIT_IDENTITY=someone \
+HOME="$home" GIT_IDENTITY=someone \
   bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 || fail "post-start failed with a git identity: $(cat "$TEST_DIR/out")"
 ! grep -Eq '^git config --global user\.(name|email) ' "$CALLS" || fail "post-start replaced an existing git identity: $(cat "$CALLS")"
 ! grep -q 'WARN: session export' "$TEST_DIR/out" || fail "post-start warned about session export with a history file: $(cat "$TEST_DIR/out")"
 
 home="$(fixture_home brief-drift)"
-HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" GIT_STATUS=' M briefs/AGENTS.md' GIT_BEHIND=3 \
+HOME="$home" GIT_STATUS=' M briefs/AGENTS.md' GIT_BEHIND=3 \
   bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 || fail "post-start failed on a drifted brief checkout; it warns only: $(cat "$TEST_DIR/out")"
 grep -Fq "WARN: briefs: $home/.digio/michelin has local changes" "$TEST_DIR/out" || fail "post-start did not warn about local brief changes: $(cat "$TEST_DIR/out")"
 grep -Fq "WARN: briefs: $home/.digio/michelin is 3 commits behind origin/main" "$TEST_DIR/out" || fail "post-start did not warn that the briefs are behind: $(cat "$TEST_DIR/out")"
@@ -185,13 +181,13 @@ grep -Fq "WARN: briefs: $home/.digio/michelin is 3 commits behind origin/main" "
 # A home from an older image: each start removes the global hooksPath in the Michelin clone, and fails with no hook in effect.
 : > "$CALLS"
 home="$(fixture_home hooks-stale)"
-HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" GIT_GLOBAL_HOOKS="$home/.digio/michelin/hooks/shims" \
+HOME="$home" GIT_GLOBAL_HOOKS="$home/.digio/michelin/hooks/shims" \
   bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 || fail "post-start failed on a stale global hooksPath: $(cat "$TEST_DIR/out")"
 grep -Fxq "git config --global --unset-all core.hooksPath" "$CALLS" \
   || fail "post-start kept a global hooksPath in the Michelin clone: $(cat "$CALLS")"
 : > "$CALLS"
 home="$(fixture_home hooks-none)"
-if HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" GIT_SYSTEM_HOOKS='' \
+if HOME="$home" GIT_SYSTEM_HOOKS='' \
   bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1; then
   fail "post-start exited 0 with no hooksPath in effect"
 fi
@@ -203,17 +199,40 @@ HOME="$home" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1
 grep -Fq "WARN: briefs: $home/.digio/michelin is missing" "$TEST_DIR/out" || fail "post-start did not warn that the briefs are missing: $(cat "$TEST_DIR/out")"
 
 : > "$CALLS"
-home="$(fixture_home skillport-failure)"
-if HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" FAIL_skillport=1 \
-  bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1; then
-  fail "post-start exited 0 when SkillPort setup failed"
+home="$(fixture_home skills-failure)"
+if HOME="$home" FAIL_skills=1 SKILLPORT_LEFT=1 bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1; then
+  fail "post-start exited 0 when the skills deploy failed"
 fi
-grep -Fq 'SkillPort setup failed' "$TEST_DIR/out" || fail "post-start did not name the SkillPort failure"
+grep -Fxq 'skills: preset factory for claude_code failed' "$TEST_DIR/out" && grep -Fq 'skills setup failed' "$TEST_DIR/out" \
+  || fail "post-start did not name the failed skills deploy: $(cat "$TEST_DIR/out")"
+! grep -q 'mcp remove' "$CALLS" || fail "post-start removed SkillPort when the skills deploy failed: $(cat "$CALLS")"
 grep -Fq 'install-briefs.sh apply' "$CALLS" || fail "post-start stopped before installing briefs"
+
+# A home that SkillPort configured: the start removes its two servers and its skill-search links, and the links of
+# skills that left the preset. It keeps a link that points outside the skills library.
+: > "$CALLS"
+home="$(fixture_home skillport-left)"
+mkdir -p "$home/devs" "$home/.claude/skills" "$home/.agents/skills" "$home/.codex/skills" "$TEST_DIR/other-skill"
+cp -R "$TEST_DIR/skills-template" "$home/devs/digio-skills"; mkdir -p "$home/devs/digio-skills/.git"
+ln -s "$home/devs/digio-skills/skills/skill-search" "$home/.claude/skills/skill-search"
+ln -s "$home/devs/digio-skills/skills/skill-search" "$home/.agents/skills/skill-search"
+ln -s "$home/devs/digio-skills/skills/left-the-preset" "$home/.codex/skills/left-the-preset"
+ln -s "$TEST_DIR/other-skill" "$home/.codex/skills/other-skill"
+HOME="$home" SKILLPORT_LEFT=1 bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 \
+  || fail "post-start failed on a home that SkillPort configured: $(cat "$TEST_DIR/out")"
+grep -Fxq 'claude mcp remove --scope user skillport' "$CALLS" && grep -Fxq 'codex mcp remove skillport' "$CALLS" \
+  || fail "post-start did not remove the SkillPort servers: $(cat "$CALLS")"
+[ ! -L "$home/.claude/skills/skill-search" ] && [ ! -L "$home/.agents/skills/skill-search" ] || fail "post-start kept a skill-search link"
+[ ! -L "$home/.codex/skills/left-the-preset" ] || fail "post-start kept the link of a skill that left the preset"
+[ -L "$home/.codex/skills/other-skill" ] || fail "post-start removed a link that points outside the skills library"
+if HOME="$home" SKILLPORT_LEFT=1 FAIL_mcp_remove=1 bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1; then
+  fail "post-start exited 0 when it could not remove SkillPort"
+fi
+grep -Fxq 'skills: SkillPort removal failed' "$TEST_DIR/out" || fail "post-start did not name the failed SkillPort removal: $(cat "$TEST_DIR/out")"
 
 : > "$CALLS"
 home="$(fixture_home scheduler-failure)"
-if HOME="$home" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" FAIL_session_export_scheduler=1 \
+if HOME="$home" FAIL_session_export_scheduler=1 \
   bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1; then
   fail "post-start exited 0 when the session-export scheduler failed"
 fi
@@ -222,7 +241,7 @@ grep -Fq 'session-export scheduler failed to start' "$TEST_DIR/out" \
 
 : > "$CALLS"
 start_with_workspaces() { # <home> <workspaces>
-  HOME="$1" DIGIO_WORKSPACES="$2" DIGIO_SKILLPORT_MCP="$TEST_DIR/bin/skillport-mcp" \
+  HOME="$1" DIGIO_WORKSPACES="$2" \
     bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1
 }
 : > "$CALLS"
@@ -232,6 +251,8 @@ start_with_workspaces "$home" "$ws" || fail "post-start failed with a workspace 
 [ -d "$ws/devs/digio-skills" ] || fail "digio-skills did not land in the workspace devs folder"
 grep -q "^npm install --prefix $ws/devs/digio-skills " "$CALLS" \
   || fail "post-start installed through the ~/devs link, not the real path: $(grep '^npm' "$CALLS")"
+grep -q "^skills-manager-cli --skills-root $ws/devs/digio-skills/skills " "$CALLS" \
+  || fail "post-start deployed through the ~/devs link, not the real path: $(grep '^skills-manager-cli' "$CALLS")"
 ! grep -q "insteadOf" "$CALLS" || fail "post-start routed git over HTTPS outside a Codespace"
 
 home="$(fixture_home devs-move)"; ws="$TEST_DIR/ws-move"; mkdir -p "$ws" "$home/devs"
@@ -334,4 +355,4 @@ grep -Fxq 'CMD ["/usr/local/bin/workbench-start.sh"]' "$DIR/../assets/image/Dock
 grep -Fq '"BASH_ENV": "/home/vscode/.digio/node-auth-token.sh"' "$DIR/../../.devcontainer/devcontainer.json" \
   || fail "devcontainer.json BASH_ENV no longer matches workbench-start.sh"
 
-echo "workbench start self-test passed: the image CMD runs the dev container start-up, then T3, the start scripts check the git hooks and remove a stale global hooksPath, post-start sets the hidden-email git identity and warns on drifted briefs, post-create writes the session-export store from 1Password or warns, a rebuild keeps ~/devs and the logins, post-start links ~/devs to the workspace devs folder, keeps Codespace logins on the kept disk, routes Codespace git over HTTPS, configures public SkillPort, leaves the HumanLayer daemon stopped and fails loudly"
+echo "workbench start self-test passed: the image CMD runs the dev container start-up, then T3, the start scripts check the git hooks and remove a stale global hooksPath, post-start sets the hidden-email git identity and warns on drifted briefs, post-create writes the session-export store from 1Password or warns, a rebuild keeps ~/devs and the logins, post-start links ~/devs to the workspace devs folder, keeps Codespace logins on the kept disk, routes Codespace git over HTTPS, links the factory skills, removes what SkillPort left, leaves the HumanLayer daemon stopped and fails loudly"

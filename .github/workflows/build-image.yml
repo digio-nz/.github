@@ -110,11 +110,10 @@ jobs:
         with:
           name: image-skills
           path: .digio-skills
-      - name: Stage the SkillPort Requirements
+      - name: Stage the Git Hooks
         shell: bash
         run: |
           mkdir -p image/.build
-          cp .digio-skills/requirements.txt image/.build/skillport-requirements.txt
           rm -rf image/.build/michelin-hooks
           cp -a hooks image/.build/michelin-hooks
           test -r image/.build/michelin-hooks/pre-push/secret-guard.sh

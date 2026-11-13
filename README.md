@@ -17,7 +17,6 @@ Its tools are in `image/references/tools.tsv`, and `image/skills.ref` pins the s
 `hooks/` and `lib/` are what the image bakes in or sources. `check-workspace.yml` tests all three.
 
 Michelin calls `digio-nz/.github/.github/workflows/label-pr.yml@main` to label its PRs without adding Discipline gates.
-Digio-skills runs its trusted main-branch labeller directly through its local `label-pr.yml`.
 Labelling includes draft PRs and has no path filter.
 Bare Bug, Task, Plan and Phase label events rerun the labeller to remove legacy type duplication.
 

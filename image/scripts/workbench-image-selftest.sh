@@ -52,11 +52,10 @@ grep -q '"TOOLS_REFRESH": "${localEnv:TOOLS_REFRESH}"' "$MICHELIN/image/assets/i
   && grep -q 'TOOLS_REFRESH: \${{ github.run_id }}' "$MICHELIN/.github/workflows/build-image.yml" \
   && grep -q '^ARG TOOLS_REFRESH$' "$dockerfile" \
   && pass "each workflow image build invalidates the cached tool layers" || fail "the tool-layer cache key is absent"
-grep -q 'cp .digio-skills/requirements.txt image/.build/skillport-requirements.txt' "$MICHELIN/.github/workflows/build-image.yml" \
-  && grep -q '^COPY .build/skillport-requirements.txt /tmp/skillport-requirements.txt$' "$dockerfile" \
-  && grep -q 'git -C "$skills_root" show "$skills_ref:requirements.txt"' "$CLI" \
-  && pass "the image installs SkillPort from the latest stable public SkillPort requirements" \
-  || fail "the SkillPort requirements source is absent"
+[ "$(grep -cE '^ +(amd64|arm64)\) asset=skills-manager-cli-Linux-(x64|arm64) sum=[0-9a-f]{64} ;; \\$' "$dockerfile")" = 2 ] \
+  && grep -q '^ && echo "$sum  /usr/local/bin/skills-manager-cli" | sha256sum -c - \\$' "$dockerfile" \
+  && pass "the image installs skills-manager-cli with a pinned checksum for each architecture" \
+  || fail "the skills-manager-cli install has no pinned checksum for each architecture"
 grep -q 'cp -a hooks image/.build/michelin-hooks' "$MICHELIN/.github/workflows/build-image.yml" \
   && grep -q '^COPY .build/michelin-hooks/ /opt/digio/michelin-hooks/$' "$dockerfile" \
   && grep -q 'git config --system core.hooksPath /opt/digio/michelin-hooks/shims' "$dockerfile" \
@@ -124,14 +123,20 @@ printf 'RUN curl -fsSL https://example.com/install.sh | sh\n' >> "$tmp/fx/Docker
 out="$(lint "$tmp/fx/good.tsv")"; code=$?
 [ "$code" = 1 ] && grep -q "Dockerfile:7: installs a tool outside tools.sh: curl -fsSL https://example.com/install.sh" <<<"$out" && pass "an installer curl in the Dockerfile: lint names the line" || fail "dockerfile curl: exit $code $out"
 cp "$tmp/fx/Dockerfile.good" "$tmp/fx/Dockerfile"
-printf 'RUN /opt/digio/skillport-venv/bin/pip install --no-cache-dir --upgrade -r /tmp/skillport-requirements.txt\n' >> "$tmp/fx/Dockerfile"
+cli_download='curl -fsSL -o /usr/local/bin/skills-manager-cli "https://github.com/xingkongliang/skills-manager/releases/download/v1.44.0/$asset"'
+printf 'RUN %s && echo "$sum  /usr/local/bin/skills-manager-cli" | sha256sum -c -\n' "$cli_download" >> "$tmp/fx/Dockerfile"
 out="$(lint "$tmp/fx/good.tsv")"; code=$?
-[ "$code" = 0 ] && pass "the public SkillPort requirements install is allowed" || fail "SkillPort requirement install: exit $code $out"
+[ "$code" = 0 ] && pass "the skills-manager-cli download with a checksum is allowed" || fail "skills-manager-cli download: exit $code $out"
 cp "$tmp/fx/Dockerfile.good" "$tmp/fx/Dockerfile"
-printf 'RUN /opt/digio/skillport-venv/bin/pip install skillport\n' >> "$tmp/fx/Dockerfile"
+printf 'RUN %s\n' "$cli_download" >> "$tmp/fx/Dockerfile"
 out="$(lint "$tmp/fx/good.tsv")"; code=$?
-[ "$code" = 1 ] && grep -q "Dockerfile:7: installs a tool outside tools.sh: /opt/digio/skillport-venv/bin/pip install skillport" <<<"$out" \
-  && pass "an unmanaged SkillPort install is red" || fail "unmanaged SkillPort install: exit $code $out"
+[ "$code" = 1 ] && grep -q "Dockerfile:7: installs a tool outside tools.sh: curl -fsSL -o /usr/local/bin/skills-manager-cli .* with no sha256sum -c$" <<<"$out" \
+  && pass "a skills-manager-cli download with no checksum is red" || fail "skills-manager-cli with no checksum: exit $code $out"
+cp "$tmp/fx/Dockerfile.good" "$tmp/fx/Dockerfile"
+printf 'RUN curl -fsSL -o /usr/local/bin/other "https://github.com/xingkongliang/skills-manager/releases/download/v1.44.0/other"\n' >> "$tmp/fx/Dockerfile"
+out="$(lint "$tmp/fx/good.tsv")"; code=$?
+[ "$code" = 1 ] && grep -q "Dockerfile:7: installs a tool outside tools.sh: curl -fsSL -o /usr/local/bin/other " <<<"$out" \
+  && pass "a download of another binary is red" || fail "another binary download: exit $code $out"
 cp "$tmp/fx/Dockerfile.good" "$tmp/fx/Dockerfile"
 cp "$tmp/fx/devcontainer.json" "$tmp/fx/devcontainer.good"
 printf '{\n  "features": {\n    "ghcr.io/devcontainers/features/sshd:latest": {}\n  }\n}\n' > "$tmp/fx/devcontainer.json"

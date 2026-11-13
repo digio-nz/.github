@@ -421,7 +421,7 @@ EOF
     [ -n "$REPO" ] && [ -n "$NUMBER" ] || die3 "usage: gates.sh pr-labels-apply <owner/name> <n>"
     label_args=(apply --repo "$REPO" --pr "$NUMBER")
     if [ -n "${3:-}" ] && [ -n "${4:-}" ]; then label_args+=(--base "$3" --head "$4"); fi
-    node --experimental-strip-types "${DIGIO_SKILLS_ROOT:-$HOME/.digio/skills}/skills/pr-labeller/scripts/pr-labeller.ts" "${label_args[@]}"
+    node --experimental-strip-types "${DIGIO_SKILLS_ROOT:-$HOME/.digio/skills}/archive/pr-labeller/scripts/pr-labeller.ts" "${label_args[@]}"
     ;;
 
   *) die3 "usage: gates.sh [append-only|pr-sections|pr-title|pr-labels-apply|exempt-pr|no-hand-version|migrations|no-secret|actionlint|actionlint-install] ..." ;;
