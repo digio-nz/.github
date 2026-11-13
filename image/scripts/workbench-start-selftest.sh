@@ -46,10 +46,21 @@ if [ "${1:-}" = clone ]; then
   mkdir -p "$target/.git"
 fi
 STUB
+# As the real deploy does, the stub links each skill of the root and refuses a name that holds something else.
 cat > "$TEST_DIR/bin/skills-manager-cli" <<'STUB'
 #!/usr/bin/env bash
 echo "${0##*/} $*" >> "$CALLS"
-[ -z "${FAIL_skills:-}" ]
+[ -z "${FAIL_skills:-}" ] || exit 1
+root="$2"
+case "${*: -1}" in claude_code) folder="$HOME/.claude/skills" ;; codex) folder="$HOME/.codex/skills" ;; *) exit 2 ;; esac
+for skill in "$root"/*/; do
+  skill="${skill%/}"; link="$folder/${skill##*/}"
+  if [ -L "$link" ] || [ -e "$link" ]; then
+    [ "$(readlink "$link")" = "$skill" ] || { echo "error: Refusing to replace $link" >&2; exit 1; }
+  else
+    ln -s "$skill" "$link"
+  fi
+done
 STUB
 # SKILLPORT_LEFT is a home that an older start configured: mcp get finds the server.
 for command in claude codex; do
@@ -135,15 +146,22 @@ grep -Fq "WARN: session export: op cannot read op://orchestrator/DIGIO_HISTORY_D
 home="$(fixture_home post-start-clone)"
 HOME="$home" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 \
   || fail "post-start failed after a fresh clone: $(cat "$TEST_DIR/out")"
-grep -Fq "git clone -q https://github.com/digio-nz/digio-skills.git $home/devs/digio-skills" "$CALLS" \
-  || fail "post-start did not clone digio-skills into ~/devs: $(cat "$CALLS")"
+grep -Fq "git clone -q https://github.com/digio-nz/digio-skills.git $home/.digio/skills" "$CALLS" \
+  || fail "post-start did not clone digio-skills into ~/.digio/skills: $(cat "$CALLS")"
+[ ! -e "$home/devs/digio-skills" ] || fail "post-start made a working clone in ~/devs"
+grep -q "^npm install --prefix $home/.digio/skills " "$CALLS" || fail "post-start did not install the skill dependencies in ~/.digio/skills: $(grep '^npm' "$CALLS")"
+for script in install-briefs session-close; do
+  [ "$(readlink "$home/.claude/skills/$script")" = "$home/.digio/skills/skills/$script" ] \
+    && [ "$(readlink "$home/.codex/skills/$script")" = "$home/.digio/skills/skills/$script" ] \
+    || fail "post-start did not link $script from ~/.digio/skills"
+done
 for agent in claude_code codex; do
-  grep -Fxq "skills-manager-cli --skills-root $home/devs/digio-skills/skills presets deploy factory --agent $agent" "$CALLS" \
+  grep -Fxq "skills-manager-cli --skills-root $home/.digio/skills/skills presets deploy factory --agent $agent" "$CALLS" \
     || fail "post-start did not deploy the factory preset for $agent: $(cat "$CALLS")"
 done
 [ -d "$home/.claude/skills" ] && [ -d "$home/.codex/skills" ] || fail "post-start did not make the skills folders that the deploy needs"
 ! grep -q 'mcp remove' "$CALLS" || fail "post-start removed SkillPort from a home that has none: $(cat "$CALLS")"
-grep -Fxq "session-export-sweep.sh start $home/devs/digio-skills" "$CALLS" \
+grep -Fxq "session-export-sweep.sh start $home/.digio/skills" "$CALLS" \
   || fail "post-start did not schedule session exports from the skills checkout"
 ! grep -q "humanlayer-daemon.sh" "$CALLS" || fail "post-start started the HumanLayer daemon: $(cat "$CALLS")"
 ! grep -q 'install-skills' "$CALLS" || fail "post-start still ran install-skills: $(cat "$CALLS")"
@@ -156,13 +174,42 @@ grep -Fq "WARN: session export: no DIGIO_HISTORY_DATABASE_URL secret and no $hom
 
 : > "$CALLS"
 home="$(fixture_home post-start-pull)"
-mkdir -p "$home/devs"
-cp -R "$TEST_DIR/skills-template" "$home/devs/digio-skills"
-mkdir -p "$home/devs/digio-skills/.git"
+cp -R "$TEST_DIR/skills-template" "$home/.digio/skills"
+mkdir -p "$home/.digio/skills/.git"
 HOME="$home" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 \
   || fail "post-start failed with an existing checkout: $(cat "$TEST_DIR/out")"
-grep -Fxq "git -C $home/devs/digio-skills pull -q --ff-only" "$CALLS" \
+grep -Fxq "git -C $home/.digio/skills pull -q --ff-only" "$CALLS" && ! grep -q '^git clone' "$CALLS" \
   || fail "post-start did not pull the existing skills checkout: $(cat "$CALLS")"
+
+# A home from before ~/.digio/skills: ~/devs/digio-skills is the working clone, and the skill links point into it, by
+# the ~/devs link and by the workspace path. The start leaves the clone alone and replaces the links.
+: > "$CALLS"
+home="$(fixture_home working-clone)"; ws="$TEST_DIR/ws-working-clone"
+mkdir -p "$ws/devs" "$home/.claude/skills" "$home/.codex/skills"; ln -s "$ws/devs" "$home/devs"
+cp -R "$TEST_DIR/skills-template" "$ws/devs/digio-skills"; mkdir -p "$ws/devs/digio-skills/.git"
+ln -s "$home/devs/digio-skills/skills/install-briefs" "$home/.claude/skills/install-briefs"
+ln -s "$ws/devs/digio-skills/skills/session-close" "$home/.codex/skills/session-close"
+ln -s "$ws/devs/digio-skills/skills/left-the-preset" "$home/.codex/skills/left-the-preset"
+before="$(cd "$ws/devs/digio-skills" && find . | sort)"
+HOME="$home" DIGIO_WORKSPACES="$ws" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 \
+  || fail "post-start failed with a working clone in ~/devs: $(cat "$TEST_DIR/out")"
+! grep -q "devs/digio-skills" "$CALLS" || fail "post-start touched the working clone: $(grep 'devs/digio-skills' "$CALLS")"
+[ "$(cd "$ws/devs/digio-skills" && find . | sort)" = "$before" ] || fail "post-start changed the working clone"
+[ "$(readlink "$home/.claude/skills/install-briefs")" = "$home/.digio/skills/skills/install-briefs" ] \
+  && [ "$(readlink "$home/.codex/skills/session-close")" = "$home/.digio/skills/skills/session-close" ] \
+  || fail "post-start kept a skill link into the working clone: $(cat "$TEST_DIR/out")"
+[ ! -L "$home/.codex/skills/left-the-preset" ] || fail "post-start kept the link of a skill that only the working clone has"
+
+# DIGIO_SKILLS_ROOT through a link: npm and the deploy get the physical path.
+: > "$CALLS"
+home="$(fixture_home skills-root-link)"
+cp -R "$TEST_DIR/skills-template" "$home/skills-real"; mkdir -p "$home/skills-real/.git"; ln -s "$home/skills-real" "$home/skills-link"
+HOME="$home" DIGIO_SKILLS_ROOT="$home/skills-link" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 \
+  || fail "post-start failed with DIGIO_SKILLS_ROOT through a link: $(cat "$TEST_DIR/out")"
+grep -q "^npm install --prefix $home/skills-real " "$CALLS" \
+  || fail "post-start installed through the link, not the real path: $(grep '^npm' "$CALLS")"
+grep -q "^skills-manager-cli --skills-root $home/skills-real/skills " "$CALLS" \
+  || fail "post-start deployed through the link, not the real path: $(grep '^skills-manager-cli' "$CALLS")"
 
 : > "$CALLS"
 home="$(fixture_home identity-kept)"
@@ -212,11 +259,11 @@ grep -Fq 'install-briefs.sh apply' "$CALLS" || fail "post-start stopped before i
 # skills that left the preset. It keeps a link that points outside the skills library.
 : > "$CALLS"
 home="$(fixture_home skillport-left)"
-mkdir -p "$home/devs" "$home/.claude/skills" "$home/.agents/skills" "$home/.codex/skills" "$TEST_DIR/other-skill"
-cp -R "$TEST_DIR/skills-template" "$home/devs/digio-skills"; mkdir -p "$home/devs/digio-skills/.git"
-ln -s "$home/devs/digio-skills/skills/skill-search" "$home/.claude/skills/skill-search"
-ln -s "$home/devs/digio-skills/skills/skill-search" "$home/.agents/skills/skill-search"
-ln -s "$home/devs/digio-skills/skills/left-the-preset" "$home/.codex/skills/left-the-preset"
+mkdir -p "$home/.claude/skills" "$home/.agents/skills" "$home/.codex/skills" "$TEST_DIR/other-skill"
+cp -R "$TEST_DIR/skills-template" "$home/.digio/skills"; mkdir -p "$home/.digio/skills/.git"
+ln -s "$home/.digio/skills/skills/skill-search" "$home/.claude/skills/skill-search"
+ln -s "$home/.digio/skills/skills/skill-search" "$home/.agents/skills/skill-search"
+ln -s "$home/.digio/skills/skills/left-the-preset" "$home/.codex/skills/left-the-preset"
 ln -s "$TEST_DIR/other-skill" "$home/.codex/skills/other-skill"
 HOME="$home" SKILLPORT_LEFT=1 bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 \
   || fail "post-start failed on a home that SkillPort configured: $(cat "$TEST_DIR/out")"
@@ -248,21 +295,17 @@ start_with_workspaces() { # <home> <workspaces>
 home="$(fixture_home devs-fresh)"; ws="$TEST_DIR/ws-fresh"; mkdir -p "$ws"
 start_with_workspaces "$home" "$ws" || fail "post-start failed with a workspace disk: $(cat "$TEST_DIR/out")"
 [ "$(readlink "$home/devs")" = "$ws/devs" ] || fail "post-start did not link ~/devs to the workspace devs folder"
-[ -d "$ws/devs/digio-skills" ] || fail "digio-skills did not land in the workspace devs folder"
-grep -q "^npm install --prefix $ws/devs/digio-skills " "$CALLS" \
-  || fail "post-start installed through the ~/devs link, not the real path: $(grep '^npm' "$CALLS")"
-grep -q "^skills-manager-cli --skills-root $ws/devs/digio-skills/skills " "$CALLS" \
-  || fail "post-start deployed through the ~/devs link, not the real path: $(grep '^skills-manager-cli' "$CALLS")"
+[ -z "$(ls -A "$ws/devs")" ] || fail "post-start put a repo in the workspace devs folder: $(ls -A "$ws/devs")"
 ! grep -q "insteadOf" "$CALLS" || fail "post-start routed git over HTTPS outside a Codespace"
 
 home="$(fixture_home devs-move)"; ws="$TEST_DIR/ws-move"; mkdir -p "$ws" "$home/devs"
-cp -R "$TEST_DIR/skills-template" "$home/devs/digio-skills"; mkdir -p "$home/devs/digio-skills/.git"
+mkdir -p "$home/devs/digio-notes/.git"
 start_with_workspaces "$home" "$ws" || fail "post-start failed to move ~/devs: $(cat "$TEST_DIR/out")"
-[ "$(readlink "$home/devs")" = "$ws/devs" ] && [ -d "$ws/devs/digio-skills/.git" ] || fail "post-start did not move ~/devs into the workspace devs folder"
+[ "$(readlink "$home/devs")" = "$ws/devs" ] && [ -d "$ws/devs/digio-notes/.git" ] || fail "post-start did not move ~/devs into the workspace devs folder"
 
-home="$(fixture_home devs-clash)"; ws="$TEST_DIR/ws-clash"; mkdir -p "$ws/devs/digio-skills" "$home/devs/digio-skills"
-if start_with_workspaces "$home" "$ws"; then fail "post-start exited 0 when ~/devs and the workspace disk both had digio-skills"; fi
-grep -Fq "move $home/devs/digio-skills by hand" "$TEST_DIR/out" || fail "post-start did not name the clash: $(cat "$TEST_DIR/out")"
+home="$(fixture_home devs-clash)"; ws="$TEST_DIR/ws-clash"; mkdir -p "$ws/devs/digio-notes" "$home/devs/digio-notes"
+if start_with_workspaces "$home" "$ws"; then fail "post-start exited 0 when ~/devs and the workspace disk both had digio-notes"; fi
+grep -Fq "move $home/devs/digio-notes by hand" "$TEST_DIR/out" || fail "post-start did not name the clash: $(cat "$TEST_DIR/out")"
 [ -d "$home/devs" ] && [ ! -L "$home/devs" ] || fail "post-start changed ~/devs despite the clash"
 
 home="$(fixture_home devs-elsewhere)"; ws="$TEST_DIR/ws-elsewhere"; mkdir -p "$ws" "$TEST_DIR/other"; ln -s "$TEST_DIR/other" "$home/devs"
@@ -310,16 +353,16 @@ grep -Fq "links to $TEST_DIR/codex-other, not $ws/.home/codex" "$TEST_DIR/out" |
 home="$(fixture_home rebuild)"; ws="$TEST_DIR/ws-rebuild"; mkdir -p "$ws/digio-michelin" "$home/.codex"; echo login > "$home/.codex/auth.json"
 CODESPACES=true CODESPACE_VSCODE_FOLDER="$ws/digio-michelin" start_with_workspaces "$home" "$ws" \
   || fail "post-start failed before the rebuild: $(cat "$TEST_DIR/out")"
-echo work > "$ws/devs/digio-skills/uncommitted.txt"
+mkdir "$ws/devs/digio-notes"; echo work > "$ws/devs/digio-notes/uncommitted.txt"
 rm -rf "$home"; home="$(fixture_home rebuild)"
 : > "$CALLS"
 CODESPACES=true CODESPACE_VSCODE_FOLDER="$ws/digio-michelin" start_with_workspaces "$home" "$ws" \
   || fail "post-start failed after the rebuild: $(cat "$TEST_DIR/out")"
-[ "$(cat "$home/devs/digio-skills/uncommitted.txt" 2>/dev/null)" = work ] || fail "the rebuild lost work in ~/devs"
+[ "$(cat "$home/devs/digio-notes/uncommitted.txt" 2>/dev/null)" = work ] || fail "the rebuild lost work in ~/devs"
 [ "$(readlink "$ws/devs/digio-michelin")" = "$ws/digio-michelin" ] || fail "the rebuild lost the link to the codespace's own repo"
 [ "$(cat "$home/.codex/auth.json" 2>/dev/null)" = login ] || fail "the rebuild lost the Codex login"
-grep -Fxq "git -C $home/devs/digio-skills pull -q --ff-only" "$CALLS" && ! grep -q 'clone.*digio-skills' "$CALLS" \
-  || fail "after the rebuild post-start did not reuse the kept digio-skills checkout: $(cat "$CALLS")"
+grep -Fq "git clone -q https://github.com/digio-nz/digio-skills.git $home/.digio/skills" "$CALLS" \
+  || fail "after the rebuild post-start did not clone digio-skills into the new home: $(cat "$CALLS")"
 
 # The image's CMD, where no dev container tool runs the slots: post-create.sh, then post-start.sh, in the background, then the command.
 cmd_start() { # <home> [post-create exit]: run workbench-start.sh with stub start scripts; waits for its log

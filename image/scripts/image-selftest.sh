@@ -49,7 +49,7 @@ probe="$(mktemp -d)"
 rm -rf "$probe"
 echo "hooks: system hooksPath guards pushes (clean passes, credential BLOCKED)"
 
-export DIGIO_SKILLS_ROOT="${DIGIO_SKILLS_ROOT:-$HOME/devs/digio-skills}"
+export DIGIO_SKILLS_ROOT="${DIGIO_SKILLS_ROOT:-$HOME/.digio/skills}"
 TEST_HOME="$(mktemp -d)"
 export HOME="$TEST_HOME"
 trap 'rm -rf "$TEST_HOME"' EXIT

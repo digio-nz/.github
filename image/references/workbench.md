@@ -69,7 +69,7 @@ digio-michelin's devcontainer config and the image's `CMD` run them from a digio
   It clones digio-michelin to `~/.digio/michelin`, runs `git-hooks.sh`, and sets up the npm auth lines with `npm-auth.sh` and `node-auth-token.sh`, the same two scripts a physical machine runs.
   Where `DIGIO_HISTORY_DATABASE_URL` is unset, it writes `DATABASE_URL` to `~/devs/digio-history/.env.local` from `op://orchestrator/DIGIO_HISTORY_DATABASE_URL/credential`, once, if that file is missing. It prints a `WARN:` line when `op` cannot read the value.
 - `scripts/post-start.sh` runs next, and at each start after that.
-  It joins the tailnet, sets the global Git identity to `digbycampbell` with `96467498+digbycampbell@users.noreply.github.com` when none is set, runs `git-hooks.sh`, pulls digio-michelin, and clones or pulls `~/devs/digio-skills`.
+  It joins the tailnet, sets the global Git identity to `digbycampbell` with `96467498+digbycampbell@users.noreply.github.com` when none is set, runs `git-hooks.sh`, pulls digio-michelin, and clones or pulls `~/.digio/skills`.
   It prints a `WARN:` line when `~/.digio/michelin` is missing, has local changes or is behind `origin/main`, because the briefs then stay stale. A warning does not fail the start.
   It also links the skills, writes the briefs, installs the skill dependencies, installs the session export hook, and starts the session export sweep.
   It does not start the HumanLayer daemon.
@@ -86,9 +86,13 @@ The digio-michelin clone supplies the briefs, not the hooks.
 It fails the create or the start when no pre-push hook is in effect, and its message names the path.
 
 At each start, `skills-manager-cli` links the skills of the `factory` preset into `~/.claude/skills` and `~/.codex/skills`.
+The links point into `~/.digio/skills`, the installed clone of digio-skills, which each start pulls.
+`~/devs/digio-skills` is a working clone: the start does not read it or change it, so a branch there changes no agent.
 The presets and the skill records are in digio-skills `skills/.skills-manager/`.
-Each start first removes each link into the skills checkout, so a skill that left the preset loses its link.
-`skills-manager-cli` keeps its database in `~/.skills-manager` and writes nothing into the checkout.
+
+Each start first removes each link into the installed clone, so a skill that left the preset loses its link.
+It also removes each link into `~/devs/digio-skills`.
+`skills-manager-cli` keeps its database in `~/.skills-manager` and writes nothing into the clone.
 Each start also removes the SkillPort servers and the `skill-search` links from a home that SkillPort configured.
 When a step fails, `post-start.sh` prints `skills: <step> failed`, and the start fails.
 
@@ -96,7 +100,7 @@ The session export needs the `DIGIO_HISTORY_DATABASE_URL` secret or `~/devs/digi
 The sweep loop runs `session-export-sweep.sh once` every 15 minutes, the entrypoint a physical machine's timer runs too.
 It writes its log to `${XDG_STATE_HOME:-$HOME/.local/state}/digio-workbench/session-export-sweep.log`.
 
-`DIGIO_SKILLS_ROOT` selects a skills checkout other than `~/devs/digio-skills`.
+`DIGIO_SKILLS_ROOT` selects an installed clone other than `~/.digio/skills`.
 
 ## Where a repo goes
 
@@ -105,7 +109,8 @@ It writes its log to `${XDG_STATE_HOME:-$HOME/.local/state}/digio-workbench/sess
 | A repo you edit | `~/devs/<repo>`, which is `/workspaces/devs/<repo>` | A rebuild keeps it, and the path matches the machines. |
 | The Codespace's own repo, digio-michelin | `/workspaces/digio-michelin`, linked as `~/devs/digio-michelin` | Codespaces clones it there, and VS Code opens it. |
 | The factory's runtime copy of digio-michelin | `~/.digio/michelin` | Create clones it again. Start pulls it with `--ff-only`, so an edit there stops the pull. |
-| Skills | `~/devs/digio-skills`, on the workspace disk | Start clones or pulls it, then links the skills of the `factory` preset from it. |
+| The installed skills | `~/.digio/skills`, in the home | Start clones or pulls it, then links the skills of the `factory` preset from it. Do not edit it. |
+| The working clone of digio-skills | `~/devs/digio-skills` | A repo you edit. No start-up script reads it. |
 
 Do not edit the runtime copy.
 To change digio-michelin, work in `/workspaces/digio-michelin` on a branch, and open a PR.

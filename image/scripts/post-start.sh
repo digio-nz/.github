@@ -81,7 +81,8 @@ fi
 bash "$SCRIPT_DIR/git-hooks.sh" || failed=1
 
 SKILLS_DIR="$HOME/.digio/michelin"
-SKILL_REPO="${DIGIO_SKILLS_ROOT:-$HOME/devs/digio-skills}"
+# The installed skills: setup owns this clone. ~/devs/digio-skills is a working clone, and a branch there must change no agent.
+SKILL_REPO="${DIGIO_SKILLS_ROOT:-$HOME/.digio/skills}"
 export DIGIO_MICHELIN_ROOT="$SKILLS_DIR" DIGIO_SKILLS_ROOT="$SKILL_REPO"
 # The briefs reach the harnesses from this checkout; a local change or a failed pull keeps them stale, so say so.
 brief_drift() {
@@ -108,20 +109,20 @@ if [ -d "$SKILLS_DIR/.git" ]; then
   fi
 
   if [ -d "$SKILL_REPO/.git" ]; then
-    # Through the ~/devs link, npm rewrites the lockfile's paths and the next pull refuses the dirty checkout.
+    # Through a link, npm rewrites the lockfile's paths and the next pull refuses the dirty checkout.
     npm install --prefix "$(cd "$SKILL_REPO" && pwd -P)" --omit=dev --no-audit --no-fund --silent \
       || echo "digio-skills dependencies failed; skills without npm dependencies remain available" >&2
     link_skills() (
       set -e
       trap 'echo "skills: $step failed" >&2' ERR
       step='the skills library'
-      # Through the ~/devs link, skills-manager-cli writes some links with that path and some with the physical one.
+      # Through a link, skills-manager-cli writes some links with that path and some with the physical one.
       root="$(cd "$SKILL_REPO/skills" && pwd -P)"
       step='stale link removal'
       for folder in "$HOME/.claude/skills" "$HOME/.codex/skills"; do
         mkdir -p "$folder"
-        # A deploy adds links and removes none.
-        find "$folder" -maxdepth 1 -type l -lname "$root/*" -delete
+        # A deploy adds links and removes none, and it refuses a name that holds a link into the working clone.
+        find "$folder" -maxdepth 1 -type l \( -lname "$root/*" -o -lname '*/devs/digio-skills/skills/*' \) -delete
       done
       for agent in claude_code codex; do
         step="preset factory for $agent"

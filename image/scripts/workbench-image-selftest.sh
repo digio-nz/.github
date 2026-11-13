@@ -6,7 +6,7 @@ DIR="$(cd "$(dirname "$0")" && pwd -P)"
 CLI="$DIR/workbench-image.sh"
 TOOLS="$DIR/tools.sh"
 MICHELIN="$(cd "$DIR/../.." && pwd -P)"
-export DIGIO_MICHELIN_ROOT="$MICHELIN" DIGIO_SKILLS_ROOT="${DIGIO_SKILLS_ROOT:-$HOME/devs/digio-skills}"
+export DIGIO_MICHELIN_ROOT="$MICHELIN" DIGIO_SKILLS_ROOT="${DIGIO_SKILLS_ROOT:-$HOME/.digio/skills}"
 # The physical path: on macOS mktemp gives /var/..., a link to /private/var/..., and the tools resolve links.
 tmp="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$tmp"' EXIT
 export DIGIO_SANDBOX_TEAM=team-x DIGIO_SANDBOX_PROJECT=proj-y
