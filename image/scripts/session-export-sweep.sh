@@ -6,7 +6,7 @@
 #
 # The sweep saves each Claude Code session the SessionEnd hook missed (a crash, a closed pane, a reboot) and keeps a
 # long-running session current. once sweeps one Claude Code logs directory, <claude config dir> else
-# ${CLAUDE_CONFIG_DIR:-~/.claude}, with digio-skills at ${DIGIO_SKILLS_ROOT:-~/devs/digio-skills}. It writes the sweep's
+# ${CLAUDE_CONFIG_DIR:-~/.claude}, with digio-skills at ${DIGIO_SKILLS_ROOT:-~/.digio/skills}. It writes the sweep's
 # output to SESSION_SWEEP_LOG (default ~/.local/state/session-export/sweep.log), between a start line and an exit line:
 #   2026-10-12T05:30:00Z sweep: start /home/digby/.claude
 #   2026-10-12T05:30:04Z sweep: exit 0
@@ -32,7 +32,7 @@ fail() {
 }
 
 sweep_once() {
-  local skills="${DIGIO_SKILLS_ROOT:-$HOME/devs/digio-skills}"
+  local skills="${DIGIO_SKILLS_ROOT:-$HOME/.digio/skills}"
   local log="${SESSION_SWEEP_LOG:-$HOME/.local/state/session-export/sweep.log}"
   local logs="${1:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}" d rc
   export CLAUDE_CONFIG_DIR="$logs"
