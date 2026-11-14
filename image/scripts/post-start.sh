@@ -115,18 +115,15 @@ if [ -d "$SKILLS_DIR/.git" ]; then
     link_skills() (
       set -e
       trap 'echo "skills: $step failed" >&2' ERR
-      step='the skills library'
-      # Through a link, skills-manager-cli writes some links with that path and some with the physical one.
-      root="$(cd "$SKILL_REPO/skills" && pwd -P)"
-      step='stale link removal'
+      # digio-skills owns the link step. It refuses a name that holds a link into the working clone of an older home.
+      step='removal of the links into ~/devs/digio-skills'
       for folder in "$HOME/.claude/skills" "$HOME/.codex/skills"; do
         mkdir -p "$folder"
-        # A deploy adds links and removes none, and it refuses a name that holds a link into the working clone.
-        find "$folder" -maxdepth 1 -type l \( -lname "$root/*" -o -lname '*/devs/digio-skills/skills/*' \) -delete
+        find "$folder" -maxdepth 1 -type l -lname '*/devs/digio-skills/skills/*' -delete
       done
       for agent in claude_code codex; do
         step="preset factory for $agent"
-        skills-manager-cli --skills-root "$root" presets deploy factory --agent "$agent" >/dev/null
+        bash "$SKILL_REPO/lib/skill-links.sh" apply factory "$agent"
       done
       # An older image has no skills-manager-cli, so SkillPort goes only after the links are in place.
       step='SkillPort removal'

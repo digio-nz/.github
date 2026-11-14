@@ -85,13 +85,14 @@ The digio-michelin clone supplies the briefs, not the hooks.
 `git-hooks.sh` removes a global `core.hooksPath` in `~/.digio/michelin`, which a home from an older image holds and which overrides the image's.
 It fails the create or the start when no pre-push hook is in effect, and its message names the path.
 
-At each start, `skills-manager-cli` links the skills of the `factory` preset into `~/.claude/skills` and `~/.codex/skills`.
+At each start, `post-start.sh` calls `lib/skill-links.sh` of digio-skills for Claude Code and for Codex, with the preset `factory`.
+The script links the skills of the preset into `~/.claude/skills` and `~/.codex/skills` with `skills-manager-cli`.
 The links point into `~/.digio/skills`, the installed clone of digio-skills, which each start pulls.
 `~/devs/digio-skills` is a working clone: the start does not read it or change it, so a branch there changes no agent.
 The presets and the skill records are in digio-skills `skills/.skills-manager/`.
 
-Each start first removes each link into the installed clone, so a skill that left the preset loses its link.
-It also removes each link into `~/devs/digio-skills`.
+The script first removes each link into the installed clone, so a skill that left the preset loses its link.
+Each start also removes each link into `~/devs/digio-skills`, which a home from an older image holds.
 `skills-manager-cli` keeps its database in `~/.skills-manager` and writes nothing into the clone.
 Each start also removes the SkillPort servers and the `skill-search` links from a home that SkillPort configured.
 When a step fails, `post-start.sh` prints `skills: <step> failed`, and the start fails.
