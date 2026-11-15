@@ -46,20 +46,20 @@ if [ "${1:-}" = clone ]; then
   mkdir -p "$target/.git"
 fi
 STUB
-# As the real deploy does, the stub links each skill of the root and refuses a name that holds something else.
-cat > "$TEST_DIR/bin/skills-manager-cli" <<'STUB'
+# The stub of digio-skills lib/skill-links.sh. As the real script does, it replaces the links into its own clone and
+# refuses a name that holds something else.
+LINK_STUB="$TEST_DIR/skills-template/lib/skill-links.sh"; mkdir -p "$TEST_DIR/skills-template/lib"
+cat > "$LINK_STUB" <<'STUB'
 #!/usr/bin/env bash
-echo "${0##*/} $*" >> "$CALLS"
-[ -z "${FAIL_skills:-}" ] || exit 1
-root="$2"
-case "${*: -1}" in claude_code) folder="$HOME/.claude/skills" ;; codex) folder="$HOME/.codex/skills" ;; *) exit 2 ;; esac
+root="$(cd "$(dirname "$0")/../skills" && pwd -P)"
+echo "skill-links $root $*" >> "$CALLS"
+[ -z "${FAIL_skills:-}" ] || { echo "skill-links: $3: presets deploy $2: refused" >&2; exit 3; }
+case "$3" in claude_code) folder="$HOME/.claude/skills" ;; codex) folder="$HOME/.codex/skills" ;; *) exit 2 ;; esac
+find "$folder" -maxdepth 1 -type l -lname "$root/*" -delete
 for skill in "$root"/*/; do
   skill="${skill%/}"; link="$folder/${skill##*/}"
-  if [ -L "$link" ] || [ -e "$link" ]; then
-    [ "$(readlink "$link")" = "$skill" ] || { echo "error: Refusing to replace $link" >&2; exit 1; }
-  else
-    ln -s "$skill" "$link"
-  fi
+  if [ -L "$link" ] || [ -e "$link" ]; then echo "error: Refusing to replace $link" >&2; exit 3; fi
+  ln -s "$skill" "$link"
 done
 STUB
 # SKILLPORT_LEFT is a home that an older start configured: mcp get finds the server.
@@ -156,8 +156,8 @@ for script in install-briefs session-close; do
     || fail "post-start did not link $script from ~/.digio/skills"
 done
 for agent in claude_code codex; do
-  grep -Fxq "skills-manager-cli --skills-root $home/.digio/skills/skills presets deploy factory --agent $agent" "$CALLS" \
-    || fail "post-start did not deploy the factory preset for $agent: $(cat "$CALLS")"
+  grep -Fxq "skill-links $home/.digio/skills/skills apply factory $agent" "$CALLS" \
+    || fail "post-start did not link the factory preset for $agent with the script of ~/.digio/skills: $(cat "$CALLS")"
 done
 [ -d "$home/.claude/skills" ] && [ -d "$home/.codex/skills" ] || fail "post-start did not make the skills folders that the deploy needs"
 ! grep -q 'mcp remove' "$CALLS" || fail "post-start removed SkillPort from a home that has none: $(cat "$CALLS")"
@@ -208,8 +208,8 @@ HOME="$home" DIGIO_SKILLS_ROOT="$home/skills-link" bash "$TEST_DIR/devcontainer/
   || fail "post-start failed with DIGIO_SKILLS_ROOT through a link: $(cat "$TEST_DIR/out")"
 grep -q "^npm install --prefix $home/skills-real " "$CALLS" \
   || fail "post-start installed through the link, not the real path: $(grep '^npm' "$CALLS")"
-grep -q "^skills-manager-cli --skills-root $home/skills-real/skills " "$CALLS" \
-  || fail "post-start deployed through the link, not the real path: $(grep '^skills-manager-cli' "$CALLS")"
+grep -q "^skill-links $home/skills-real/skills apply factory " "$CALLS" \
+  || fail "post-start did not link from the clone that DIGIO_SKILLS_ROOT names: $(grep '^skill-links' "$CALLS")"
 
 : > "$CALLS"
 home="$(fixture_home identity-kept)"

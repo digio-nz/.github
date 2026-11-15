@@ -54,11 +54,10 @@ TEST_HOME="$(mktemp -d)"
 export HOME="$TEST_HOME"
 trap 'rm -rf "$TEST_HOME"' EXIT
 
-# The deploy that post-start.sh runs, on the pinned skills checkout: each link of the factory preset reaches a skill.
-mkdir -p "$HOME/.claude/skills" "$HOME/.codex/skills"
+# The link step that post-start.sh runs, on the pinned skills checkout: each link of the factory preset reaches a skill.
 for agent in claude_code codex; do
-  skills-manager-cli --skills-root "$(cd "$DIGIO_SKILLS_ROOT/skills" && pwd -P)" presets deploy factory --agent "$agent" >/dev/null \
-    || fail "skills-manager-cli cannot deploy the factory preset for $agent"
+  bash "$DIGIO_SKILLS_ROOT/lib/skill-links.sh" apply factory "$agent" \
+    || fail "skill-links.sh cannot link the factory preset for $agent"
 done
 for folder in "$HOME/.claude/skills" "$HOME/.codex/skills"; do
   [ -n "$(find "$folder" -maxdepth 1 -type l 2>/dev/null)" ] || fail "the factory preset put no link in $folder"
