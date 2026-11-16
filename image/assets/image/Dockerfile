@@ -67,6 +67,7 @@ RUN test -r /opt/digio/michelin-hooks/pre-push/secret-guard.sh \
 COPY scripts/lint-hook.sh /opt/digio/hooks/lint-hook.sh
 COPY assets/image/claude-managed-settings.json /etc/claude-code/managed-settings.json
 COPY assets/image/codex-requirements.toml /etc/codex/requirements.toml
+COPY assets/image/workbench-op.env /opt/digio/workbench-op.env
 RUN chmod 0755 /opt/digio/hooks /etc/claude-code /etc/codex /opt/digio/hooks/lint-hook.sh \
  && chmod 0444 /etc/claude-code/managed-settings.json /etc/codex/requirements.toml
 

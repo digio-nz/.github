@@ -3,6 +3,7 @@
 # Sourced, never run, by every shell: POSIX sh, quiet, and it writes no file. npm-auth.sh writes the npmrc lines that read it.
 #   a NODE_AUTH_TOKEN already set wins;
 #   in a Codespace (CODESPACES), the Codespace's GITHUB_TOKEN;
+#   in a workbench with a 1Password service account, op://workbench/DIGIO_PACKAGES_TOKEN. A fine-grained GH_TOKEN cannot read packages;
 #   else a GH_TOKEN already in the environment (a Hermes job on a machine);
 #   else the gh login: gh auth token. gh runs without BASH_ENV, or a gh that is a bash script would source this file again.
 # The workbench copies this file to ~/.digio/node-auth-token.sh, which BASH_ENV and the shell profiles source (post-create.sh).
@@ -11,6 +12,8 @@
 if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
   if [ -n "${CODESPACES:-}" ]; then
     [ -z "${GITHUB_TOKEN:-}" ] || NODE_AUTH_TOKEN="$GITHUB_TOKEN"
+  elif [ -r "$HOME/.config/digio/op-workbench" ] && command -v op >/dev/null 2>&1; then
+    NODE_AUTH_TOKEN="$(OP_SERVICE_ACCOUNT_TOKEN="$(tr -d '[:space:]' < "$HOME/.config/digio/op-workbench")" env -u BASH_ENV op read op://workbench/DIGIO_PACKAGES_TOKEN/credential 2>/dev/null)" || NODE_AUTH_TOKEN=""
   elif [ -n "${GH_TOKEN:-}" ]; then
     NODE_AUTH_TOKEN="$GH_TOKEN"
   elif command -v gh >/dev/null 2>&1; then
