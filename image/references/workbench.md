@@ -103,6 +103,10 @@ It writes its log to `${XDG_STATE_HOME:-$HOME/.local/state}/digio-workbench/sess
 
 `DIGIO_SKILLS_ROOT` selects an installed clone other than `~/.digio/skills`.
 
+Claude Code reads its managed settings from `/etc/claude-code/managed-settings.json` in the image.
+The file turns on the Elephant Goldfish Model plugin at a pinned commit, and a person cannot turn it off in a session.
+`assets/image/claude-managed-settings.json` is its source, with the same pin as each machine has from digio-nz/digio-machines.
+
 ## Where a repo goes
 
 | Kind | Path | Why |
