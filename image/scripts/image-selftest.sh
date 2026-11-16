@@ -32,6 +32,11 @@ jq -e '.enabledPlugins["egm@egm"] == true and (.extraKnownMarketplaces.egm.sourc
 hook="$(jq -r '.hooks.PostToolUse[0].hooks[0].command' /etc/claude-code/managed-settings.json)"
 [ -x "$hook" ] || fail "the managed settings of Claude Code name the lint hook $hook, and it is not a program in the image"
 
+[ -r /etc/codex/requirements.toml ] \
+  || fail "$(id -un) cannot read /etc/codex/requirements.toml, so Codex gets no managed hook"
+grep -Fq "command = \"$hook\"" /etc/codex/requirements.toml \
+  || fail "the managed requirements of Codex do not name the lint hook $hook that Claude Code has"
+
 # Every push in the image runs secret-guard: the system gitconfig points at the baked shims, and a credential-shaped
 # push to a throwaway local remote is refused through them.
 [ "$(git config --system --get core.hooksPath)" = /opt/digio/michelin-hooks/shims ] \

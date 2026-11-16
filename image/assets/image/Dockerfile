@@ -59,13 +59,16 @@ RUN test -r /opt/digio/michelin-hooks/pre-push/secret-guard.sh \
  && find /opt/digio/michelin-hooks -type f \( -name '*.sh' -o -path '*/shims/*' \) -exec chmod a+x {} + \
  && git config --system core.hooksPath /opt/digio/michelin-hooks/shims
 
-# The managed settings of Claude Code: the Elephant Goldfish Model plugin at a pinned commit, the same pin as on each
-# machine (digio-nz/digio-machines features/claude-code.nix), and the lint hook. Claude Code reads this file before a
-# person's own settings. The hook runs the rules of a project on each file that an agent edits.
+# The settings that the image owns for each harness. A person cannot turn them off.
+# Claude Code reads /etc/claude-code/managed-settings.json before a person's own settings: the Elephant Goldfish Model
+# plugin at a pinned commit, the same pin as on each machine (digio-nz/digio-machines features/claude-code.nix), and the
+# lint hook. Codex reads /etc/codex/requirements.toml: the same lint hook, as a managed hook.
 # COPY --chmod also sets the mode of a folder that it makes, and a folder with mode 0444 cannot be entered.
+COPY scripts/lint-hook.sh /opt/digio/hooks/lint-hook.sh
 COPY assets/image/claude-managed-settings.json /etc/claude-code/managed-settings.json
-RUN chmod 0755 /etc/claude-code && chmod 0444 /etc/claude-code/managed-settings.json
-COPY --chmod=0755 scripts/lint-hook.sh /usr/local/bin/lint-hook.sh
+COPY assets/image/codex-requirements.toml /etc/codex/requirements.toml
+RUN chmod 0755 /opt/digio/hooks /etc/claude-code /etc/codex /opt/digio/hooks/lint-hook.sh \
+ && chmod 0444 /etc/claude-code/managed-settings.json /etc/codex/requirements.toml
 
 COPY scripts/workbench-start.sh /usr/local/bin/workbench-start.sh
 RUN chmod 0755 /usr/local/bin/workbench-start.sh

@@ -56,5 +56,22 @@ check "a crash of ast-grep does not block the agent" 0 "$tmp/sg/scripts/run.sh"
 echo 1 > "$tmp/sg-exit"
 check "a project with no sgconfig.yml does not run ast-grep" 0 "$tmp/plain/src/a.ts"
 
+# Codex gives the text of a patch, with each path on its own line. A path can be relative to the cwd of the hook input.
+codex() { # <name> <want exit> <cwd> <patch text> [want text on stderr]
+  local name="$1" want="$2" cwd="$3" patch="$4" text="${5:-}" got err
+  err="$(jq -n --arg c "$patch" --arg d "$cwd" '{tool_name: "apply_patch", cwd: $d, tool_input: {command: $c}}' | bash "$HOOK" 2>&1 >/dev/null)" && got=0 || got=$?
+  if [ "$got" = "$want" ] && { [ -z "$text" ] || grep -q "$text" <<<"$err"; }; then
+    pass=$((pass + 1))
+  else
+    fail=$((fail + 1))
+    echo "FAIL: $name: exit $got, want $want; stderr: $err" >&2
+  fi
+}
+codex "a Codex patch that adds a file goes through the rules" 2 "$tmp" "$(printf '*** Begin Patch\n*** Add File: %s/bad/src/a.tsx\n+x\n*** End Patch' "$tmp")" "stand-in finding"
+codex "a Codex patch with a path relative to the cwd" 2 "$tmp/bad" "$(printf '*** Begin Patch\n*** Update File: src/a.tsx\n@@\n+x\n*** End Patch')" "stand-in finding"
+codex "a Codex patch of a clean file passes" 0 "$tmp" "$(printf '*** Begin Patch\n*** Update File: %s/good/src/a.tsx\n*** End Patch' "$tmp")"
+codex "a Codex patch that only deletes a file passes" 0 "$tmp" "$(printf '*** Begin Patch\n*** Delete File: %s/bad/src/a.tsx\n*** End Patch' "$tmp")"
+codex "a Codex shell command is not a patch and passes" 0 "$tmp/bad" "ls -la"
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
