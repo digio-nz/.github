@@ -77,6 +77,9 @@ set_identity() { [ -n "$(git config --global "$1")" ] || git config --global "$1
 if ! { set_identity user.name digbycampbell && set_identity user.email 96467498+digbycampbell@users.noreply.github.com; }; then
   echo "git: cannot set the global identity" >&2; failed=1
 fi
+# A worktree keeps its links as relative paths. The host sees the repositories at another path than this container,
+# and an absolute link works in one of the two places only.
+git config --global worktree.useRelativePaths true || { echo "FAIL: git: cannot set worktree.useRelativePaths" >&2; failed=1; }
 
 bash "$SCRIPT_DIR/git-hooks.sh" || failed=1
 
