@@ -73,11 +73,17 @@ digio-michelin's devcontainer config and the image's `CMD` run them from a digio
   It joins the tailnet and runs `git-hooks.sh`.
   If no Git identity is set, it sets `digbycampbell` with `96467498+digbycampbell@users.noreply.github.com`.
   It pulls digio-michelin and clones or pulls `~/.digio/skills`.
-  It prints a `WARN:` line when `~/.digio/michelin` is missing, has local changes or is behind `origin/main`, because the briefs then stay stale. A warning does not fail the start.
 
-  It links the skills and writes the global brief files with `install-briefs.sh apply --quiet`.
+  It prints a `WARN:` line when `~/.digio/michelin` has local changes or is behind `origin/main`.
+  A warning does not fail the start.
+  A missing Michelin clone prints `FAIL:` and fails the start.
+
+  It calls `lib/install-skills.sh apply factory` from the installed skills clone.
+  It calls `scripts/install-briefs.sh apply --quiet` from the Michelin clone.
   Claude Code and Grok read `~/.claude/CLAUDE.md`.
-  It also installs the skill dependencies and the session export hook, and starts the session export sweep.
+  The skills installer also installs the packages of the skills.
+
+  The start installs the session export hook and starts the session export sweep.
   It does not start the HumanLayer daemon.
   To make the workbench an online HumanLayer host, run `humanlayer login`, then `humanlayer-daemon.sh start`.
 

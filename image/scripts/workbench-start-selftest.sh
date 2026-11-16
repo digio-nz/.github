@@ -23,7 +23,7 @@ printf '#!/usr/bin/env bash\necho "session-export-sweep.sh $*" >> "$CALLS"\n[ -z
 printf '#!/usr/bin/env bash\necho "humanlayer-daemon.sh $*" >> "$CALLS"\n' \
   > "$TEST_DIR/devcontainer/humanlayer-daemon.sh"
 
-mkdir -p "$TEST_DIR/bin" "$TEST_DIR/skills-template/skills/install-briefs/scripts" \
+mkdir -p "$TEST_DIR/bin" "$TEST_DIR/skills-template/skills/fixture-skill/scripts" \
   "$TEST_DIR/skills-template/skills/session-close/scripts" "$TEST_DIR/skills-template/scripts"
 for tool in node pnpm gh npm; do
   printf '#!/usr/bin/env bash\n[ "${1:-}" = auth ] && exit 1\necho stub-%s\n' "$tool" > "$TEST_DIR/bin/$tool"
@@ -46,20 +46,20 @@ if [ "${1:-}" = clone ]; then
   mkdir -p "$target/.git"
 fi
 STUB
-# The stub of digio-skills lib/skill-links.sh. As the real script does, it replaces the links into its own clone and
-# refuses a name that holds something else.
-LINK_STUB="$TEST_DIR/skills-template/lib/skill-links.sh"; mkdir -p "$TEST_DIR/skills-template/lib"
-cat > "$LINK_STUB" <<'STUB'
+mkdir -p "$TEST_DIR/skills-template/lib"
+cat > "$TEST_DIR/skills-template/lib/install-skills.sh" <<'STUB'
 #!/usr/bin/env bash
-root="$(cd "$(dirname "$0")/../skills" && pwd -P)"
-echo "skill-links $root $*" >> "$CALLS"
-[ -z "${FAIL_skills:-}" ] || { echo "skill-links: $3: presets deploy $2: refused" >&2; exit 3; }
-case "$3" in claude_code) folder="$HOME/.claude/skills" ;; codex) folder="$HOME/.codex/skills" ;; *) exit 2 ;; esac
-find "$folder" -maxdepth 1 -type l -lname "$root/*" -delete
-for skill in "$root"/*/; do
-  skill="${skill%/}"; link="$folder/${skill##*/}"
-  if [ -L "$link" ] || [ -e "$link" ]; then echo "error: Refusing to replace $link" >&2; exit 3; fi
-  ln -s "$skill" "$link"
+root="$(cd "$(dirname "$0")/.." && pwd -P)"
+echo "install-skills $root $*" >> "$CALLS"
+[ "$*" = 'apply factory' ] || { echo "FAIL: install-skills: arguments: $*" >&2; exit 2; }
+[ -z "${FAIL_skills:-}" ] || { echo "FAIL: install-skills: links claude_code: deploy refused" >&2; exit 1; }
+for folder in "$HOME/.claude/skills" "$HOME/.codex/skills"; do
+  find "$folder" -maxdepth 1 -type l -lname "$root/skills/*" -delete
+  for skill in "$root/skills"/*/; do
+    skill="${skill%/}"; link="$folder/${skill##*/}"
+    if [ -L "$link" ] || [ -e "$link" ]; then echo "FAIL: install-skills: refusing to replace $link" >&2; exit 1; fi
+    ln -s "$skill" "$link"
+  done
 done
 STUB
 # SKILLPORT_LEFT is a home that an older start configured: mcp get finds the server.
@@ -81,7 +81,7 @@ echo "op $*" >> "$CALLS"
 [ "$1 $2 $3" = "inject --force --out-file" ] || exit 2
 sed 's|{{ op://orchestrator/DIGIO_HISTORY_DATABASE_URL/credential }}|postgres://fixture-history|' > "$4"
 STUB
-for script in install-briefs session-close; do
+for script in fixture-skill session-close; do
   printf '#!/usr/bin/env bash\necho "%s.sh $*" >> "$CALLS"\n' "$script" \
     > "$TEST_DIR/skills-template/skills/$script/scripts/$script.sh"
 done
@@ -97,6 +97,12 @@ export DIGIO_WORKSPACES="$TEST_DIR/no-workspaces"
 fixture_home() {
   local home="$TEST_DIR/home-$1"
   mkdir -p "$home/.digio/michelin/.git"
+  mkdir -p "$home/.digio/michelin/scripts"
+  cat > "$home/.digio/michelin/scripts/install-briefs.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "install-briefs.sh $*" >> "$CALLS"
+[ -z "${FAIL_briefs:-}" ] || { echo "FAIL: install-briefs: fixture brief refused" >&2; exit 1; }
+STUB
   echo "$home"
 }
 
@@ -104,7 +110,7 @@ fixture_home() {
 home="$(fixture_home post-create)"
 HOME="$home" bash "$TEST_DIR/devcontainer/post-create.sh" > "$TEST_DIR/out" 2>&1 \
   || fail "post-create failed: $(cat "$TEST_DIR/out")"
-! grep -Eq 'skills-manager-cli|install-briefs' "$CALLS" \
+! grep -Eq 'install-skills|install-briefs' "$CALLS" \
   || fail "post-create configured skills: $(cat "$CALLS")"
 # The Michelin clone in the fixture has no hooks folder: the image's system hooksPath is the one in effect.
 grep -Fxq "git config --system --type=path --get core.hooksPath" "$CALLS" \
@@ -152,25 +158,24 @@ grep -Fq "git clone -q https://github.com/digio-nz/digio-skills.git $home/.digio
 if [ "$(grep -c '^install-briefs.sh ' "$CALLS")" != 1 ] || ! grep -Fxq 'install-briefs.sh apply --quiet' "$CALLS"; then
   fail "post-start must apply briefs once without extra flags: $(cat "$CALLS")"
 fi
-grep -q "^npm install --prefix $home/.digio/skills " "$CALLS" || fail "post-start did not install the skill dependencies in ~/.digio/skills: $(grep '^npm' "$CALLS")"
-for script in install-briefs session-close; do
+! grep -q '^npm ' "$CALLS" || fail "post-start installs packages outside install-skills.sh"
+for script in fixture-skill session-close; do
   [ "$(readlink "$home/.claude/skills/$script")" = "$home/.digio/skills/skills/$script" ] \
     && [ "$(readlink "$home/.codex/skills/$script")" = "$home/.digio/skills/skills/$script" ] \
     || fail "post-start did not link $script from ~/.digio/skills"
 done
-for agent in claude_code codex; do
-  grep -Fxq "skill-links $home/.digio/skills/skills apply factory $agent" "$CALLS" \
-    || fail "post-start did not link the factory preset for $agent with the script of ~/.digio/skills: $(cat "$CALLS")"
-done
+grep -Fxq "install-skills $home/.digio/skills apply factory" "$CALLS" \
+  || fail "post-start did not install the factory preset: $(cat "$CALLS")"
 [ -d "$home/.claude/skills" ] && [ -d "$home/.codex/skills" ] || fail "post-start did not make the skills folders that the deploy needs"
 ! grep -q 'mcp remove' "$CALLS" || fail "post-start removed SkillPort from a home that has none: $(cat "$CALLS")"
 grep -Fxq "session-export-sweep.sh start $home/.digio/skills" "$CALLS" \
   || fail "post-start did not schedule session exports from the skills checkout"
 ! grep -q "humanlayer-daemon.sh" "$CALLS" || fail "post-start started the HumanLayer daemon: $(cat "$CALLS")"
-! grep -q 'install-skills' "$CALLS" || fail "post-start still ran install-skills: $(cat "$CALLS")"
-grep -Fxq "git config --global user.name digbycampbell" "$CALLS" \
-  && grep -Fxq "git config --global user.email 96467498+digbycampbell@users.noreply.github.com" "$CALLS" \
-  || fail "post-start did not set the hidden-email git identity: $(cat "$CALLS")"
+[ "$(grep -c '^install-skills ' "$CALLS")" = 1 ] || fail "post-start must install skills once: $(cat "$CALLS")"
+if ! { grep -Fxq "git config --global user.name digbycampbell" "$CALLS" \
+  && grep -Fxq "git config --global user.email 96467498+digbycampbell@users.noreply.github.com" "$CALLS"; }; then
+  fail "post-start did not set the hidden-email git identity: $(cat "$CALLS")"
+fi
 ! grep -q '^WARN: briefs' "$TEST_DIR/out" || fail "post-start warned about a clean, current brief checkout: $(cat "$TEST_DIR/out")"
 grep -Fq "WARN: session export: no DIGIO_HISTORY_DATABASE_URL secret and no $home/devs/digio-history/.env.local" "$TEST_DIR/out" \
   || fail "post-start did not warn that session exports have no store: $(cat "$TEST_DIR/out")"
@@ -181,8 +186,9 @@ cp -R "$TEST_DIR/skills-template" "$home/.digio/skills"
 mkdir -p "$home/.digio/skills/.git"
 HOME="$home" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 \
   || fail "post-start failed with an existing checkout: $(cat "$TEST_DIR/out")"
-grep -Fxq "git -C $home/.digio/skills pull -q --ff-only" "$CALLS" && ! grep -q '^git clone' "$CALLS" \
-  || fail "post-start did not pull the existing skills checkout: $(cat "$CALLS")"
+if ! { grep -Fxq "git -C $home/.digio/skills pull -q --ff-only" "$CALLS" && ! grep -q '^git clone' "$CALLS"; }; then
+  fail "post-start did not pull the existing skills checkout: $(cat "$CALLS")"
+fi
 
 # A home from before ~/.digio/skills: ~/devs/digio-skills is the working clone, and the skill links point into it, by
 # the ~/devs link and by the workspace path. The start leaves the clone alone and replaces the links.
@@ -190,7 +196,7 @@ grep -Fxq "git -C $home/.digio/skills pull -q --ff-only" "$CALLS" && ! grep -q '
 home="$(fixture_home working-clone)"; ws="$TEST_DIR/ws-working-clone"
 mkdir -p "$ws/devs" "$home/.claude/skills" "$home/.codex/skills"; ln -s "$ws/devs" "$home/devs"
 cp -R "$TEST_DIR/skills-template" "$ws/devs/digio-skills"; mkdir -p "$ws/devs/digio-skills/.git"
-ln -s "$home/devs/digio-skills/skills/install-briefs" "$home/.claude/skills/install-briefs"
+ln -s "$home/devs/digio-skills/skills/fixture-skill" "$home/.claude/skills/fixture-skill"
 ln -s "$ws/devs/digio-skills/skills/session-close" "$home/.codex/skills/session-close"
 ln -s "$ws/devs/digio-skills/skills/left-the-preset" "$home/.codex/skills/left-the-preset"
 before="$(cd "$ws/devs/digio-skills" && find . | sort)"
@@ -198,7 +204,7 @@ HOME="$home" DIGIO_WORKSPACES="$ws" bash "$TEST_DIR/devcontainer/post-start.sh" 
   || fail "post-start failed with a working clone in ~/devs: $(cat "$TEST_DIR/out")"
 ! grep -q "devs/digio-skills" "$CALLS" || fail "post-start touched the working clone: $(grep 'devs/digio-skills' "$CALLS")"
 [ "$(cd "$ws/devs/digio-skills" && find . | sort)" = "$before" ] || fail "post-start changed the working clone"
-[ "$(readlink "$home/.claude/skills/install-briefs")" = "$home/.digio/skills/skills/install-briefs" ] \
+[ "$(readlink "$home/.claude/skills/fixture-skill")" = "$home/.digio/skills/skills/fixture-skill" ] \
   && [ "$(readlink "$home/.codex/skills/session-close")" = "$home/.digio/skills/skills/session-close" ] \
   || fail "post-start kept a skill link into the working clone: $(cat "$TEST_DIR/out")"
 [ ! -L "$home/.codex/skills/left-the-preset" ] || fail "post-start kept the link of a skill that only the working clone has"
@@ -209,10 +215,8 @@ home="$(fixture_home skills-root-link)"
 cp -R "$TEST_DIR/skills-template" "$home/skills-real"; mkdir -p "$home/skills-real/.git"; ln -s "$home/skills-real" "$home/skills-link"
 HOME="$home" DIGIO_SKILLS_ROOT="$home/skills-link" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 \
   || fail "post-start failed with DIGIO_SKILLS_ROOT through a link: $(cat "$TEST_DIR/out")"
-grep -q "^npm install --prefix $home/skills-real " "$CALLS" \
-  || fail "post-start installed through the link, not the real path: $(grep '^npm' "$CALLS")"
-grep -q "^skill-links $home/skills-real/skills apply factory " "$CALLS" \
-  || fail "post-start did not link from the clone that DIGIO_SKILLS_ROOT names: $(grep '^skill-links' "$CALLS")"
+grep -Fxq "install-skills $home/skills-real apply factory" "$CALLS" \
+  || fail "post-start did not use the installed clone: $(cat "$CALLS")"
 
 : > "$CALLS"
 home="$(fixture_home identity-kept)"
@@ -245,18 +249,26 @@ grep -Fq "git push is not guarded" "$TEST_DIR/out" || fail "post-start did not n
 grep -Fq 'install-briefs.sh apply' "$CALLS" || fail "post-start stopped at the failed hooks check"
 
 home="$TEST_DIR/home-no-michelin"; mkdir -p "$home"
-HOME="$home" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1
-grep -Fq "WARN: briefs: $home/.digio/michelin is missing" "$TEST_DIR/out" || fail "post-start did not warn that the briefs are missing: $(cat "$TEST_DIR/out")"
+if HOME="$home" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1; then fail "post-start accepted missing Michelin"; fi
+grep -Fq "FAIL: install-briefs: $home/.digio/michelin is missing" "$TEST_DIR/out" || fail "post-start did not warn that the briefs are missing: $(cat "$TEST_DIR/out")"
 
 : > "$CALLS"
 home="$(fixture_home skills-failure)"
 if HOME="$home" FAIL_skills=1 SKILLPORT_LEFT=1 bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1; then
   fail "post-start exited 0 when the skills deploy failed"
 fi
-grep -Fxq 'skills: preset factory for claude_code failed' "$TEST_DIR/out" && grep -Fq 'skills setup failed' "$TEST_DIR/out" \
+grep -Fxq 'FAIL: install-skills: links claude_code: deploy refused' "$TEST_DIR/out" \
   || fail "post-start did not name the failed skills deploy: $(cat "$TEST_DIR/out")"
 ! grep -q 'mcp remove' "$CALLS" || fail "post-start removed SkillPort when the skills deploy failed: $(cat "$CALLS")"
 grep -Fq 'install-briefs.sh apply' "$CALLS" || fail "post-start stopped before installing briefs"
+
+: > "$CALLS"
+home="$(fixture_home brief-failure)"
+if HOME="$home" FAIL_briefs=1 bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1; then
+  fail "post-start accepted a failed brief writer"
+fi
+grep -Fxq 'FAIL: install-briefs: fixture brief refused' "$TEST_DIR/out" || fail "the brief failure was hidden"
+grep -Fxq "install-skills $home/.digio/skills apply factory" "$CALLS" || fail "the brief failure stopped skills"
 
 # A home that SkillPort configured: the start removes its two servers and its skill-search links, and the links of
 # skills that left the preset. It keeps a link that points outside the skills library.
@@ -270,15 +282,16 @@ ln -s "$home/.digio/skills/skills/left-the-preset" "$home/.codex/skills/left-the
 ln -s "$TEST_DIR/other-skill" "$home/.codex/skills/other-skill"
 HOME="$home" SKILLPORT_LEFT=1 bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 \
   || fail "post-start failed on a home that SkillPort configured: $(cat "$TEST_DIR/out")"
-grep -Fxq 'claude mcp remove --scope user skillport' "$CALLS" && grep -Fxq 'codex mcp remove skillport' "$CALLS" \
-  || fail "post-start did not remove the SkillPort servers: $(cat "$CALLS")"
+if ! { grep -Fxq 'claude mcp remove --scope user skillport' "$CALLS" && grep -Fxq 'codex mcp remove skillport' "$CALLS"; }; then
+  fail "post-start did not remove the SkillPort servers: $(cat "$CALLS")"
+fi
 [ ! -L "$home/.claude/skills/skill-search" ] && [ ! -L "$home/.agents/skills/skill-search" ] || fail "post-start kept a skill-search link"
 [ ! -L "$home/.codex/skills/left-the-preset" ] || fail "post-start kept the link of a skill that left the preset"
 [ -L "$home/.codex/skills/other-skill" ] || fail "post-start removed a link that points outside the skills library"
 if HOME="$home" SKILLPORT_LEFT=1 FAIL_mcp_remove=1 bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1; then
   fail "post-start exited 0 when it could not remove SkillPort"
 fi
-grep -Fxq 'skills: SkillPort removal failed' "$TEST_DIR/out" || fail "post-start did not name the failed SkillPort removal: $(cat "$TEST_DIR/out")"
+grep -Fxq 'FAIL: install-skills: SkillPort removal failed' "$TEST_DIR/out" || fail "post-start did not name the failed SkillPort removal: $(cat "$TEST_DIR/out")"
 
 : > "$CALLS"
 home="$(fixture_home scheduler-failure)"
@@ -344,8 +357,9 @@ CODESPACES=true start_with_workspaces "$home" "$ws" || fail "post-start failed t
 home="$(fixture_home logins-kept)"; ws="$TEST_DIR/ws-logins-kept"; mkdir -p "$ws/.home/codex" "$home/.codex"
 echo kept > "$ws/.home/codex/auth.json"; echo fresh > "$home/.codex/config.toml"
 CODESPACES=true start_with_workspaces "$home" "$ws" || fail "post-start failed with a kept login: $(cat "$TEST_DIR/out")"
-[ "$(cat "$home/.codex/auth.json")" = kept ] && ls "$ws/.home"/replaced-codex-*/config.toml >/dev/null 2>&1 \
-  || fail "post-start did not keep the kept login and set the fresh folder aside"
+if ! { [ "$(cat "$home/.codex/auth.json")" = kept ] && ls "$ws/.home"/replaced-codex-*/config.toml >/dev/null 2>&1; }; then
+  fail "post-start did not keep the kept login and set the fresh folder aside"
+fi
 
 home="$(fixture_home logins-elsewhere)"; ws="$TEST_DIR/ws-logins-elsewhere"; mkdir -p "$ws" "$TEST_DIR/codex-other"; ln -s "$TEST_DIR/codex-other" "$home/.codex"
 if CODESPACES=true start_with_workspaces "$home" "$ws"; then fail "post-start exited 0 when ~/.codex linked elsewhere"; fi
