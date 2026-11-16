@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/local/bin/lint-hook.sh"
+            "command": "/opt/digio/hooks/lint-hook.sh"
           }
         ]
       }

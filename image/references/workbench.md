@@ -108,6 +108,7 @@ The file turns on the Elephant Goldfish Model plugin at a pinned commit, and a p
 `assets/image/claude-managed-settings.json` is its source, with the same pin as each machine has from digio-nz/digio-machines.
 
 The same file gives Claude Code one hook, `scripts/lint-hook.sh`.
+Codex gets the same hook from `/etc/codex/requirements.toml`, as a managed hook that needs no trust from a person.
 After an agent edits a file, the hook runs the rules of that file's project on that one file, and the agent gets each error at once.
 It runs `ast-grep` when the project has an `sgconfig.yml`, for a file in any language.
 It runs ESLint for a JavaScript or TypeScript file when the project has ESLint settings and installed packages.

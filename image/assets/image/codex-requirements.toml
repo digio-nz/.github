@@ -1,0 +1,17 @@
+# The managed requirements of Codex in the image. Codex reads /etc/codex/requirements.toml, trusts each hook in it, and
+# a person cannot turn one off. The lint hook is the same program that the managed settings of Claude Code name.
+
+[features]
+hooks = true
+
+[hooks]
+managed_dir = "/opt/digio/hooks"
+
+[[hooks.PostToolUse]]
+matcher = "^(apply_patch|Edit|Write)$"
+
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "/opt/digio/hooks/lint-hook.sh"
+timeout = 60
+statusMessage = "Checking the rules of the project"
