@@ -61,10 +61,11 @@ grep -Fq "tailnet join failed" <<< "$failure_output" || fail "the join failure w
 mkdir -p "$TEST_DIR/home"
 # post-start.sh fails when no git hooksPath is in effect. The image names its baked hooks in the system gitconfig; this file stands in for it.
 git config --file "$TEST_DIR/system.gitconfig" core.hooksPath "$(cd "$DIR/../../hooks/shims" && pwd -P)"
-if ! start_output="$(HOME="$TEST_DIR/home" GIT_CONFIG_SYSTEM="$TEST_DIR/system.gitconfig" GIT_CONFIG_GLOBAL="$TEST_DIR/home/.gitconfig" TS_AUTH_KEY=selftest-auth-key TAILSCALE_UP_FAIL=1 bash "$DIR/post-start.sh" 2>&1)"; then
-  fail "a tailnet failure blocked container startup"
-fi
+# This home has no content clone, so the start exits non-zero at the content steps. A line of those steps shows that the start went past the tailnet failure.
+git config --file "$TEST_DIR/home/.gitconfig" url."file://$TEST_DIR/no-remote/".insteadOf https://github.com/
+start_output="$(HOME="$TEST_DIR/home" GIT_CONFIG_SYSTEM="$TEST_DIR/system.gitconfig" GIT_CONFIG_GLOBAL="$TEST_DIR/home/.gitconfig" TS_AUTH_KEY=selftest-auth-key TAILSCALE_UP_FAIL=1 bash "$DIR/post-start.sh" 2>&1)" || true
 grep -Fq "tailnet: setup failed; container startup will continue" <<< "$start_output" || fail "container startup did not report the tolerated failure"
+grep -Fq "FAIL: install-briefs: $TEST_DIR/home/.digio/michelin is missing" <<< "$start_output" || fail "a tailnet failure blocked container startup: $start_output"
 
 : > "$TAILSCALE_CALLS"
 success_output="$(TS_AUTH_KEY=selftest-auth-key bash "$SCRIPT" 2>&1)" || fail "a valid join failed"
