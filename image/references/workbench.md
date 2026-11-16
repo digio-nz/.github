@@ -66,20 +66,33 @@ A Codespace on digio-nz/.github runs them from its own checkout.
 digio-michelin's devcontainer config and the image's `CMD` run them from a digio-nz/.github checkout at `~/.digio/github`, which each start pulls.
 
 - The dev container runs `scripts/post-create.sh` once after it creates the container.
-  It clones digio-michelin to `~/.digio/michelin`, runs `git-hooks.sh`, and sets up the npm auth lines with `npm-auth.sh` and `node-auth-token.sh`, the same two scripts a physical machine runs.
+  It clones digio-michelin to `~/.digio/michelin` and runs `git-hooks.sh`.
+  It sets up npm auth with `npm-auth.sh` and `node-auth-token.sh`, the same scripts a physical machine runs.
   Where `DIGIO_HISTORY_DATABASE_URL` is unset, it writes `DATABASE_URL` to `~/devs/digio-history/.env.local` from `op://orchestrator/DIGIO_HISTORY_DATABASE_URL/credential`, once, if that file is missing. It prints a `WARN:` line when `op` cannot read the value.
 - `scripts/post-start.sh` runs next, and at each start after that.
-  It joins the tailnet, sets the global Git identity to `digbycampbell` with `96467498+digbycampbell@users.noreply.github.com` when none is set, runs `git-hooks.sh`, pulls digio-michelin, and clones or pulls `~/.digio/skills`.
+  It joins the tailnet and runs `git-hooks.sh`.
+  If no Git identity is set, it sets `digbycampbell` with `96467498+digbycampbell@users.noreply.github.com`.
+  It pulls digio-michelin and clones or pulls `~/.digio/skills`.
   It prints a `WARN:` line when `~/.digio/michelin` is missing, has local changes or is behind `origin/main`, because the briefs then stay stale. A warning does not fail the start.
-  It also links the skills, writes the briefs, installs the skill dependencies, installs the session export hook, and starts the session export sweep.
+
+  It links the skills and writes the global brief files with `install-briefs.sh apply --quiet`.
+  Claude Code and Grok read `~/.claude/CLAUDE.md`.
+  It also installs the skill dependencies and the session export hook, and starts the session export sweep.
   It does not start the HumanLayer daemon.
   To make the workbench an online HumanLayer host, run `humanlayer login`, then `humanlayer-daemon.sh start`.
 
 The image's `CMD` is `workbench-start.sh`, beside `humanlayer-daemon.sh` in `/usr/local/bin`. A dev container tool replaces `CMD`, so only a plain container run, such as the always-on one on msi, uses it.
-It sets the same `containerEnv`, clones or pulls `~/.digio/github`, and runs the same lifecycle from it in the background: `post-create.sh` until it succeeds once in the home, then `post-start.sh` at each start. Then it execs T3.
+It sets the same `containerEnv` and clones or pulls `~/.digio/github`.
+It runs the same lifecycle from that clone in the background.
+It runs `post-create.sh` until it succeeds once in the home, then `post-start.sh` at each start.
+Then it execs T3.
+
 Its log, `~/.local/state/digio-workbench/start.log`, ends with `start: exit N`.
-On msi, `/workspaces/devs` is the host's `/data/devs`, and the home is a named volume, so a recreate keeps the repos, the logins, `~/.digio/github` and `~/.digio/michelin`.
+
+On msi, `/workspaces/devs` is the host's `/data/devs`, and the home is a named volume.
+A recreate keeps the repos, the logins, `~/.digio/github` and `~/.digio/michelin`.
 So a change to the start-up scripts, to the briefs in digio-michelin or to digio-skills reaches a workbench at its next start, with no rebuild.
+
 The image holds this repository's `hooks/` at `/opt/digio/michelin-hooks`, and its system gitconfig sets `core.hooksPath` to their shims, so each `git push` runs secret-guard.
 The digio-michelin clone supplies the briefs, not the hooks.
 `git-hooks.sh` removes a global `core.hooksPath` in `~/.digio/michelin`, which a home from an older image holds and which overrides the image's.
@@ -109,7 +122,9 @@ The file turns on the Elephant Goldfish Model plugin at a pinned commit, and a p
 
 The same file gives Claude Code one hook, `scripts/lint-hook.sh`.
 Codex gets the same hook from `/etc/codex/requirements.toml`, as a managed hook that needs no trust from a person.
-After an agent edits a file, the hook runs the rules of that file's project on that one file, and the agent gets each error at once.
+After an agent edits a file, the hook checks it against the project's rules.
+The agent gets each error at once.
+
 It runs `ast-grep` when the project has an `sgconfig.yml`, for a file in any language.
 It runs ESLint for a JavaScript or TypeScript file when the project has ESLint settings and installed packages.
 It does nothing in a project with neither.
@@ -133,6 +148,7 @@ Do not edit the runtime copy.
 To change digio-michelin, work in `/workspaces/digio-michelin` on a branch, and open a PR.
 A worker sandbox has no `/workspaces`, so it uses the same `$HOME/.digio/michelin`.
 `DIGIO_MICHELIN_ROOT` names the runtime copy for every script.
+
 The image's set-up scripts and the sandbox bootstrap set it to `~/.digio/michelin`.
 Nothing sets it on a fleet machine, so each script uses its own default.
 There, dotfiles keeps the clone at `~/.digio/michelin`.
@@ -156,7 +172,7 @@ There, dotfiles keeps the clone at `~/.digio/michelin`.
 - Moving work to a machine is git: commit, push, pull.
 - There is no GUI browser inside.
   Agents use headless Playwright; people use their local browser on a forwarded port.
-- The image is prebuilt, so a Codespace runs only `post-create.sh`. There is no Codespaces prebuild.
+- The build publishes the image in advance, so a Codespace runs only `post-create.sh`. There is no Codespaces prebuild.
 
 ## Local models and heavy work
 

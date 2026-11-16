@@ -149,6 +149,9 @@ HOME="$home" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 
 grep -Fq "git clone -q https://github.com/digio-nz/digio-skills.git $home/.digio/skills" "$CALLS" \
   || fail "post-start did not clone digio-skills into ~/.digio/skills: $(cat "$CALLS")"
 [ ! -e "$home/devs/digio-skills" ] || fail "post-start made a working clone in ~/devs"
+if [ "$(grep -c '^install-briefs.sh ' "$CALLS")" != 1 ] || ! grep -Fxq 'install-briefs.sh apply --quiet' "$CALLS"; then
+  fail "post-start must apply briefs once without extra flags: $(cat "$CALLS")"
+fi
 grep -q "^npm install --prefix $home/.digio/skills " "$CALLS" || fail "post-start did not install the skill dependencies in ~/.digio/skills: $(grep '^npm' "$CALLS")"
 for script in install-briefs session-close; do
   [ "$(readlink "$home/.claude/skills/$script")" = "$home/.digio/skills/skills/$script" ] \
