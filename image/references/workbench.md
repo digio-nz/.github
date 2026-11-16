@@ -108,10 +108,15 @@ The file turns on the Elephant Goldfish Model plugin at a pinned commit, and a p
 `assets/image/claude-managed-settings.json` is its source, with the same pin as each machine has from digio-nz/digio-machines.
 
 The same file gives Claude Code one hook, `scripts/lint-hook.sh`.
-After an agent edits a JavaScript or TypeScript file, the hook runs the ESLint of that file's project on that one file, and the agent gets each error at once.
-It does nothing in a project with no ESLint settings or no installed packages.
-The image also has `fallow` for the health and the boundaries of a TypeScript project, and `ast-grep` for pattern rules in other languages.
-A project keeps its own rules: ESLint rules in its `eslint.config`, and boundaries in its fallow settings.
+After an agent edits a file, the hook runs the rules of that file's project on that one file, and the agent gets each error at once.
+It runs `ast-grep` when the project has an `sgconfig.yml`, for a file in any language.
+It runs ESLint for a JavaScript or TypeScript file when the project has ESLint settings and installed packages.
+It does nothing in a project with neither.
+
+A project keeps its own rules.
+A rule that a team writes is one YAML file for `ast-grep`, with a test file beside it.
+ESLint holds the standard rules of the language and the framework.
+`fallow` holds the health score, the hotspots and the boundaries of a TypeScript project.
 
 ## Where a repo goes
 

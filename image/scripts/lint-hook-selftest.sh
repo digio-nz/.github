@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lint-hook-selftest: offline. A stand-in for ESLint proves each exit of lint-hook.sh.
+# lint-hook-selftest: offline. Stand-ins for ESLint and ast-grep prove each exit of lint-hook.sh.
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 HOOK="$DIR/lint-hook.sh"
@@ -37,6 +37,24 @@ check "a file that is not JavaScript or TypeScript passes" 0 "$tmp/bad/src/notes
 check "a project with no ESLint passes" 0 "$tmp/plain/src/a.ts"
 check "a crash of ESLint does not block the agent" 0 "$tmp/broken/src/a.tsx"
 check "a file that does not exist passes" 0 "$tmp/bad/src/gone.tsx"
+
+# ast-grep: a stand-in on PATH, and a project with an sgconfig.yml. The stand-in exits with the number in its file.
+mkdir -p "$tmp/bin" "$tmp/sg/scripts"
+# shellcheck disable=SC2016 # the stand-in expands these when it runs, not this script
+printf '#!/bin/sh\necho "stand-in ast-grep finding for $*"\nexit "$(cat "%s/sg-exit")"\n' "$tmp" > "$tmp/bin/ast-grep"
+chmod +x "$tmp/bin/ast-grep"
+: > "$tmp/sg/sgconfig.yml"
+: > "$tmp/sg/scripts/run.sh"
+PATH="$tmp/bin:$PATH"
+export PATH
+echo 1 > "$tmp/sg-exit"
+check "an ast-grep finding goes to the agent, for a file of any kind" 2 "$tmp/sg/scripts/run.sh" "stand-in ast-grep finding"
+echo 0 > "$tmp/sg-exit"
+check "a file that ast-grep passes is clean" 0 "$tmp/sg/scripts/run.sh"
+echo 2 > "$tmp/sg-exit"
+check "a crash of ast-grep does not block the agent" 0 "$tmp/sg/scripts/run.sh"
+echo 1 > "$tmp/sg-exit"
+check "a project with no sgconfig.yml does not run ast-grep" 0 "$tmp/plain/src/a.ts"
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
