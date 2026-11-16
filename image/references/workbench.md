@@ -107,6 +107,12 @@ Claude Code reads its managed settings from `/etc/claude-code/managed-settings.j
 The file turns on the Elephant Goldfish Model plugin at a pinned commit, and a person cannot turn it off in a session.
 `assets/image/claude-managed-settings.json` is its source, with the same pin as each machine has from digio-nz/digio-machines.
 
+The same file gives Claude Code one hook, `scripts/lint-hook.sh`.
+After an agent edits a JavaScript or TypeScript file, the hook runs the ESLint of that file's project on that one file, and the agent gets each error at once.
+It does nothing in a project with no ESLint settings or no installed packages.
+The image also has `fallow` for the health and the boundaries of a TypeScript project, and `ast-grep` for pattern rules in other languages.
+A project keeps its own rules: ESLint rules in its `eslint.config`, and boundaries in its fallow settings.
+
 ## Where a repo goes
 
 | Kind | Path | Why |

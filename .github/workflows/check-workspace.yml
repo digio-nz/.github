@@ -79,3 +79,6 @@ jobs:
       - name: Check the Installer
         shell: bash
         run: bash image/scripts/workbench-start-selftest.sh
+      - name: Check the Lint Hook
+        shell: bash
+        run: bash image/scripts/lint-hook-selftest.sh

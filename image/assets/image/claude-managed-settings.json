@@ -10,5 +10,18 @@
   },
   "enabledPlugins": {
     "egm@egm": true
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/local/bin/lint-hook.sh"
+          }
+        ]
+      }
+    ]
   }
 }

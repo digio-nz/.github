@@ -21,6 +21,7 @@ humanlayer	humanlayer	npm	@humanlayer/cli	latest	--version	image
 devcontainer	devcontainer	npm	@devcontainers/cli	latest	--version	image
 playwright	playwright	npm	playwright	latest	--version	image
 fallow	fallow	npm	fallow	latest	--version	image
+ast-grep	ast-grep	npm	@ast-grep/cli	latest	--version	image
 gh-axi	gh-axi	npm	gh-axi	latest	--version	all
 chrome-devtools-axi	chrome-devtools-axi	npm	chrome-devtools-axi	latest	--version	all
 lavish-axi	lavish-axi	npm	lavish-axi	latest	--version	all
