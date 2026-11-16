@@ -10,7 +10,9 @@ SKILLS_DIR="$HOME/.digio/michelin"
 if [ -d "$SKILLS_DIR/.git" ]; then
   git -C "$SKILLS_DIR" pull -q --ff-only || true
 else
-  git clone -q https://github.com/digio-nz/digio-michelin.git "$SKILLS_DIR" || echo "digio-michelin clone refused: grant the repository when the Codespace asks, or run gh auth refresh -s repo"
+  # A failed clone fails this script, so the next start runs it again.
+  git clone -q https://github.com/digio-nz/digio-michelin.git "$SKILLS_DIR" \
+    || { echo "FAIL: digio-michelin clone refused: grant the repository when the Codespace asks, or run gh auth refresh -s repo" >&2; failed=1; }
 fi
 export DIGIO_MICHELIN_ROOT="$SKILLS_DIR"
 

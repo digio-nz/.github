@@ -96,31 +96,27 @@ brief_drift() {
     *) echo "WARN: briefs: $SKILLS_DIR is $behind commits behind origin/main" >&2 ;;
   esac
 }
-# A workbench with the token file of its 1Password service account signs gh in with the fine-grained token of the vault workbench.
-# An image from before this step does not export the token, so this reads the file too.
-OP_TOKEN_FILE="$HOME/.config/digio/op-workbench"
-if [ -z "${OP_SERVICE_ACCOUNT_TOKEN:-}" ] && [ -r "$OP_TOKEN_FILE" ]; then
-  OP_SERVICE_ACCOUNT_TOKEN="$(tr -d '[:space:]' < "$OP_TOKEN_FILE")"; export OP_SERVICE_ACCOUNT_TOKEN
+# workbench-start.sh gives this script each credential in its environment. It leaves a line here when 1Password did not answer.
+OP_ENV_FAIL="$HOME/.local/state/digio-workbench/op-env.fail"
+if [ -s "$OP_ENV_FAIL" ]; then cat "$OP_ENV_FAIL" >&2; failed=1; fi
+# With GH_TOKEN in the environment, gh needs no sign-in file. git asks gh for the token.
+if [ -n "${GH_TOKEN:-}" ]; then
+  gh auth setup-git || { echo "FAIL: gh: cannot set gh as the credential helper of git" >&2; failed=1; }
 fi
-if [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
-  if gh_token="$(op read op://workbench/GH_TOKEN/credential 2>/dev/null)" && [ -n "$gh_token" ]; then
-    if printf '%s' "$gh_token" | gh auth login --hostname github.com --git-protocol https --with-token && gh auth setup-git; then :
-    else echo "FAIL: gh: the token of op://workbench/GH_TOKEN did not sign in" >&2; failed=1; fi
-  else
-    echo "FAIL: gh: op cannot read op://workbench/GH_TOKEN/credential with the token of $OP_TOKEN_FILE" >&2; failed=1
-  fi
-  unset gh_token
+# Each start takes the newest copy of the helper that each shell sources.
+if [ -d "$HOME/.digio" ]; then
+  cp "$SCRIPT_DIR/node-auth-token.sh" "$HOME/.digio/node-auth-token.sh" || { echo "FAIL: npm auth: cannot write $HOME/.digio/node-auth-token.sh" >&2; failed=1; }
 fi
 
 if [ -d "$SKILLS_DIR/.git" ]; then
-  git -C "$SKILLS_DIR" pull -q --ff-only || true
+  git -C "$SKILLS_DIR" pull -q --ff-only || { echo "FAIL: digio-michelin refresh failed; the start uses the existing checkout" >&2; failed=1; }
   brief_drift
 else
   echo "FAIL: install-briefs: $SKILLS_DIR is missing; rerun post-create.sh" >&2
   failed=1
 fi
 if [ -d "$SKILL_REPO/.git" ]; then
-  git -C "$SKILL_REPO" pull -q --ff-only || echo "digio-skills refresh failed; using the existing checkout" >&2
+  git -C "$SKILL_REPO" pull -q --ff-only || { echo "FAIL: digio-skills refresh failed; the start uses the existing checkout" >&2; failed=1; }
 else
   mkdir -p "$(dirname "$SKILL_REPO")"
   git clone -q https://github.com/digio-nz/digio-skills.git "$SKILL_REPO" \
@@ -148,7 +144,7 @@ if [ -d "$SKILL_REPO/.git" ]; then
   setup_skills
   skills_code=$?
   [ "$skills_code" -eq 0 ] || failed=1
-  bash "$SKILL_REPO/skills/session-close/scripts/session-close.sh" apply >/dev/null || true
+  bash "$SKILL_REPO/skills/session-close/scripts/session-close.sh" apply >/dev/null || { echo "FAIL: session-close: the SessionEnd hook is not installed" >&2; failed=1; }
   history_env="${DIGIO_HISTORY_ENV:-$HOME/devs/digio-history/.env.local}"
   [ -n "${DIGIO_HISTORY_DATABASE_URL:-}" ] || [ -s "$history_env" ] \
     || echo "WARN: session export: no DIGIO_HISTORY_DATABASE_URL secret and no $history_env, so each session export fails" >&2
