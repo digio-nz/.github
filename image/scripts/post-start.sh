@@ -140,7 +140,6 @@ if [ -d "$SKILLS_DIR/.git" ]; then
       failed=1
     fi
     bash "$SKILL_REPO/skills/install-briefs/scripts/install-briefs.sh" apply --quiet || true
-    bash "$SKILL_REPO/skills/install-briefs/scripts/install-briefs.sh" apply --hook claude >/dev/null || true
     bash "$SKILL_REPO/skills/session-close/scripts/session-close.sh" apply >/dev/null || true
     history_env="${DIGIO_HISTORY_ENV:-$HOME/devs/digio-history/.env.local}"
     [ -n "${DIGIO_HISTORY_DATABASE_URL:-}" ] || [ -s "$history_env" ] \
