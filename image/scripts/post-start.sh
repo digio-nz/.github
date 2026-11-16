@@ -96,57 +96,52 @@ brief_drift() {
     *) echo "WARN: briefs: $SKILLS_DIR is $behind commits behind origin/main" >&2 ;;
   esac
 }
-[ -d "$SKILLS_DIR/.git" ] || echo "WARN: briefs: $SKILLS_DIR is missing, so no brief, skill or session export is set up; rerun post-create.sh" >&2
 if [ -d "$SKILLS_DIR/.git" ]; then
   git -C "$SKILLS_DIR" pull -q --ff-only || true
   brief_drift
-  if [ -d "$SKILL_REPO/.git" ]; then
-    git -C "$SKILL_REPO" pull -q --ff-only || echo "digio-skills refresh failed; using the existing checkout" >&2
-  else
-    mkdir -p "$(dirname "$SKILL_REPO")"
-    git clone -q https://github.com/digio-nz/digio-skills.git "$SKILL_REPO" \
-      || { echo "digio-skills clone failed" >&2; failed=1; }
-  fi
+else
+  echo "FAIL: install-briefs: $SKILLS_DIR is missing; rerun post-create.sh" >&2
+  failed=1
+fi
+if [ -d "$SKILL_REPO/.git" ]; then
+  git -C "$SKILL_REPO" pull -q --ff-only || echo "digio-skills refresh failed; using the existing checkout" >&2
+else
+  mkdir -p "$(dirname "$SKILL_REPO")"
+  git clone -q https://github.com/digio-nz/digio-skills.git "$SKILL_REPO" \
+    || { echo "digio-skills clone failed" >&2; failed=1; }
+fi
 
-  if [ -d "$SKILL_REPO/.git" ]; then
-    # Through a link, npm rewrites the lockfile's paths and the next pull refuses the dirty checkout.
-    npm install --prefix "$(cd "$SKILL_REPO" && pwd -P)" --omit=dev --no-audit --no-fund --silent \
-      || echo "digio-skills dependencies failed; skills without npm dependencies remain available" >&2
-    link_skills() (
-      set -e
-      trap 'echo "skills: $step failed" >&2' ERR
-      # digio-skills owns the link step. It refuses a name that holds a link into the working clone of an older home.
-      step='removal of the links into ~/devs/digio-skills'
-      for folder in "$HOME/.claude/skills" "$HOME/.codex/skills"; do
-        mkdir -p "$folder"
-        find "$folder" -maxdepth 1 -type l -lname '*/devs/digio-skills/skills/*' -delete
-      done
-      for agent in claude_code codex; do
-        step="preset factory for $agent"
-        bash "$SKILL_REPO/lib/skill-links.sh" apply factory "$agent"
-      done
-      # An older image has no skills-manager-cli, so SkillPort goes only after the links are in place.
-      step='SkillPort removal'
-      if claude mcp get skillport >/dev/null 2>&1; then claude mcp remove --scope user skillport >/dev/null; fi
-      if codex mcp get skillport >/dev/null 2>&1; then codex mcp remove skillport >/dev/null; fi
-      for folder in "$HOME/.claude/skills" "$HOME/.agents/skills"; do
-        [ ! -L "$folder/skill-search" ] || rm "$folder/skill-search"
-      done
-    )
-    link_skills
-    skills_code=$?
-    if [ "$skills_code" -ne 0 ]; then
-      echo "skills setup failed: rerun $SCRIPT_DIR/post-start.sh" >&2
-      failed=1
-    fi
-    bash "$SKILL_REPO/skills/install-briefs/scripts/install-briefs.sh" apply --quiet || true
-    bash "$SKILL_REPO/skills/session-close/scripts/session-close.sh" apply >/dev/null || true
-    history_env="${DIGIO_HISTORY_ENV:-$HOME/devs/digio-history/.env.local}"
-    [ -n "${DIGIO_HISTORY_DATABASE_URL:-}" ] || [ -s "$history_env" ] \
-      || echo "WARN: session export: no DIGIO_HISTORY_DATABASE_URL secret and no $history_env, so each session export fails" >&2
-    bash "$SCRIPT_DIR/session-export-sweep.sh" start "$SKILL_REPO" \
-      || { echo "session-export scheduler failed to start: session sweeps are not scheduled" >&2; failed=1; }
-  fi
+if [ -d "$SKILL_REPO/.git" ]; then
+  setup_skills() (
+    set -e
+    trap 'echo "FAIL: install-skills: $step failed" >&2' ERR
+    step='removal of the links into ~/devs/digio-skills'
+    for folder in "$HOME/.claude/skills" "$HOME/.codex/skills"; do
+      mkdir -p "$folder"
+      find "$folder" -maxdepth 1 -type l -lname '*/devs/digio-skills/skills/*' -delete
+    done
+    step='preset factory'
+    bash "$SKILL_REPO/lib/install-skills.sh" apply factory
+    step='SkillPort removal'
+    if claude mcp get skillport >/dev/null 2>&1; then claude mcp remove --scope user skillport >/dev/null; fi
+    if codex mcp get skillport >/dev/null 2>&1; then codex mcp remove skillport >/dev/null; fi
+    for folder in "$HOME/.claude/skills" "$HOME/.agents/skills"; do
+      [ ! -L "$folder/skill-search" ] || rm "$folder/skill-search"
+    done
+  )
+  setup_skills
+  skills_code=$?
+  [ "$skills_code" -eq 0 ] || failed=1
+  bash "$SKILL_REPO/skills/session-close/scripts/session-close.sh" apply >/dev/null || true
+  history_env="${DIGIO_HISTORY_ENV:-$HOME/devs/digio-history/.env.local}"
+  [ -n "${DIGIO_HISTORY_DATABASE_URL:-}" ] || [ -s "$history_env" ] \
+    || echo "WARN: session export: no DIGIO_HISTORY_DATABASE_URL secret and no $history_env, so each session export fails" >&2
+  bash "$SCRIPT_DIR/session-export-sweep.sh" start "$SKILL_REPO" \
+    || { echo "session-export scheduler failed to start: session sweeps are not scheduled" >&2; failed=1; }
+fi
+
+if [ -d "$SKILLS_DIR/.git" ]; then
+  bash "$SKILLS_DIR/scripts/install-briefs.sh" apply --quiet || failed=1
 fi
 
 exit "$failed"
