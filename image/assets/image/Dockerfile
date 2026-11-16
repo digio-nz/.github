@@ -59,6 +59,12 @@ RUN test -r /opt/digio/michelin-hooks/pre-push/secret-guard.sh \
  && find /opt/digio/michelin-hooks -type f \( -name '*.sh' -o -path '*/shims/*' \) -exec chmod a+x {} + \
  && git config --system core.hooksPath /opt/digio/michelin-hooks/shims
 
+# The managed settings of Claude Code: the Elephant Goldfish Model plugin at a pinned commit, the same pin as on each
+# machine (digio-nz/digio-machines features/claude-code.nix), and the lint hook. Claude Code reads this file before a
+# person's own settings. The hook runs the rules of a project on each file that an agent edits.
+COPY --chmod=0444 assets/image/claude-managed-settings.json /etc/claude-code/managed-settings.json
+COPY --chmod=0755 scripts/lint-hook.sh /usr/local/bin/lint-hook.sh
+
 COPY scripts/workbench-start.sh /usr/local/bin/workbench-start.sh
 RUN chmod 0755 /usr/local/bin/workbench-start.sh
 

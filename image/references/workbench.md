@@ -103,6 +103,21 @@ It writes its log to `${XDG_STATE_HOME:-$HOME/.local/state}/digio-workbench/sess
 
 `DIGIO_SKILLS_ROOT` selects an installed clone other than `~/.digio/skills`.
 
+Claude Code reads its managed settings from `/etc/claude-code/managed-settings.json` in the image.
+The file turns on the Elephant Goldfish Model plugin at a pinned commit, and a person cannot turn it off in a session.
+`assets/image/claude-managed-settings.json` is its source, with the same pin as each machine has from digio-nz/digio-machines.
+
+The same file gives Claude Code one hook, `scripts/lint-hook.sh`.
+After an agent edits a file, the hook runs the rules of that file's project on that one file, and the agent gets each error at once.
+It runs `ast-grep` when the project has an `sgconfig.yml`, for a file in any language.
+It runs ESLint for a JavaScript or TypeScript file when the project has ESLint settings and installed packages.
+It does nothing in a project with neither.
+
+A project keeps its own rules.
+A rule that a team writes is one YAML file for `ast-grep`, with a test file beside it.
+ESLint holds the standard rules of the language and the framework.
+`fallow` holds the health score, the hotspots and the boundaries of a TypeScript project.
+
 ## Where a repo goes
 
 | Kind | Path | Why |

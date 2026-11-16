@@ -1,0 +1,27 @@
+{
+  "extraKnownMarketplaces": {
+    "egm": {
+      "source": {
+        "source": "github",
+        "repo": "google/elephant-goldfish-model",
+        "ref": "270b10326bf366d823bc76fd662cf83808d5781e"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "egm@egm": true
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/local/bin/lint-hook.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

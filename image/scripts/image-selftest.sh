@@ -24,6 +24,12 @@ NO_MISTAKES_BIN="$(command -v no-mistakes)" || fail "no-mistakes is not on PATH"
 skills-manager-cli --version >/dev/null \
   || fail "skills-manager-cli did not report a version"
 
+jq -e '.enabledPlugins["egm@egm"] == true and (.extraKnownMarketplaces.egm.source.ref | length == 40)' /etc/claude-code/managed-settings.json >/dev/null \
+  || fail "the managed settings of Claude Code do not turn on the egm plugin at a pinned commit"
+
+hook="$(jq -r '.hooks.PostToolUse[0].hooks[0].command' /etc/claude-code/managed-settings.json)"
+[ -x "$hook" ] || fail "the managed settings of Claude Code name the lint hook $hook, and it is not a program in the image"
+
 # Every push in the image runs secret-guard: the system gitconfig points at the baked shims, and a credential-shaped
 # push to a throwaway local remote is refused through them.
 [ "$(git config --system --get core.hooksPath)" = /opt/digio/michelin-hooks/shims ] \
