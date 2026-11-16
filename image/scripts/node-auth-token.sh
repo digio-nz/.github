@@ -21,3 +21,10 @@ if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
   fi
   if [ -n "${NODE_AUTH_TOKEN:-}" ]; then export NODE_AUTH_TOKEN; else unset NODE_AUTH_TOKEN; fi
 fi
+
+# A shell that T3 did not start, such as one from `docker exec`, has no GH_TOKEN. In a workbench with a service account it reads
+# the token from the vault, so gh and git work there with no sign-in file.
+if [ -z "${GH_TOKEN:-}" ] && [ -z "${CODESPACES:-}" ] && [ -r "$HOME/.config/digio/op-workbench" ] && command -v op >/dev/null 2>&1; then
+  GH_TOKEN="$(OP_SERVICE_ACCOUNT_TOKEN="$(tr -d '[:space:]' < "$HOME/.config/digio/op-workbench")" env -u BASH_ENV op read op://workbench/GH_TOKEN/credential 2>/dev/null)" || GH_TOKEN=""
+  if [ -n "${GH_TOKEN:-}" ]; then export GH_TOKEN; else unset GH_TOKEN; fi
+fi

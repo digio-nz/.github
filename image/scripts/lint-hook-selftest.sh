@@ -35,7 +35,7 @@ check "the message tells the agent not to disable a rule" 2 "$tmp/bad/src/a.tsx"
 check "a clean file passes" 0 "$tmp/good/src/a.tsx"
 check "a file that is not JavaScript or TypeScript passes" 0 "$tmp/bad/src/notes.md"
 check "a project with no ESLint passes" 0 "$tmp/plain/src/a.ts"
-check "a crash of ESLint does not block the agent" 0 "$tmp/broken/src/a.tsx"
+check "a crash of ESLint is named and does not block the agent" 1 "$tmp/broken/src/a.tsx"
 check "a file that does not exist passes" 0 "$tmp/bad/src/gone.tsx"
 
 # ast-grep: a stand-in on PATH, and a project with an sgconfig.yml. The stand-in exits with the number in its file.
@@ -52,7 +52,7 @@ check "an ast-grep finding goes to the agent, for a file of any kind" 2 "$tmp/sg
 echo 0 > "$tmp/sg-exit"
 check "a file that ast-grep passes is clean" 0 "$tmp/sg/scripts/run.sh"
 echo 2 > "$tmp/sg-exit"
-check "a crash of ast-grep does not block the agent" 0 "$tmp/sg/scripts/run.sh"
+check "a crash of ast-grep is named and does not block the agent" 1 "$tmp/sg/scripts/run.sh"
 echo 1 > "$tmp/sg-exit"
 check "a project with no sgconfig.yml does not run ast-grep" 0 "$tmp/plain/src/a.ts"
 

@@ -27,24 +27,39 @@ up() {
 }
 
 found=""
+broken=""
+# note <tool> <exit code> <output>: 1 is a finding. Another code is a tool that did not run to its end.
+note() {
+  case "$2" in
+    0) ;;
+    1) found="$found$3"$'\n' ;;
+    124) broken="${broken}lint-hook: $1 did not end in 60 seconds"$'\n' ;;
+    *) broken="${broken}lint-hook: $1 exited $2: $(printf '%s' "$3" | tail -n 3 | tr '\n' ' ')"$'\n' ;;
+  esac
+}
 while IFS= read -r file; do
   [ -n "$file" ] || continue
   case "$file" in /*) ;; *) file="${cwd:-$PWD}/$file" ;; esac
   [ -f "$file" ] || continue
   if root="$(up "$file" sgconfig.yml)" && command -v ast-grep >/dev/null 2>&1; then
     out="$(cd "$root" && timeout 60 ast-grep scan --color never "$file" 2>&1)"
-    [ $? -ne 1 ] || found="$found$out"$'\n'
+    note ast-grep $? "$out"
   fi
   case "$file" in
     *.ts | *.tsx | *.js | *.jsx | *.mjs | *.cjs)
       if root="$(up "$file" 'eslint.config.*')" && [ -x "$root/node_modules/.bin/eslint" ]; then
         out="$(cd "$root" && timeout 60 node_modules/.bin/eslint --quiet --no-warn-ignored "$file" 2>&1)"
-        [ $? -ne 1 ] || found="$found$out"$'\n'
+        note ESLint $? "$out"
       fi
       ;;
   esac
 done <<<"$files"
-[ -n "$found" ] || exit 0
+# A tool that broke is not the fault of the change, so it does not block the agent. It is still an error, with a name.
+if [ -z "$found" ]; then
+  [ -n "$broken" ] || exit 0
+  printf '%s' "$broken" >&2
+  exit 1
+fi
 {
   echo "The rules of this project found errors in the file that you changed. Fix the cause of each one; do not disable a rule."
   printf '%s' "$found"
