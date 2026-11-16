@@ -68,7 +68,8 @@ digio-michelin's devcontainer config and the image's `CMD` run them from a digio
 - The dev container runs `scripts/post-create.sh` once after it creates the container.
   It clones digio-michelin to `~/.digio/michelin` and runs `git-hooks.sh`.
   It sets up npm auth with `npm-auth.sh` and `node-auth-token.sh`, the same scripts a physical machine runs.
-  Where `DIGIO_HISTORY_DATABASE_URL` is unset, it writes `DATABASE_URL` to `~/devs/digio-history/.env.local` from `op://orchestrator/DIGIO_HISTORY_DATABASE_URL/credential`, once, if that file is missing. It prints a `WARN:` line when `op` cannot read the value.
+  Where `DIGIO_HISTORY_DATABASE_URL` is unset, it writes `DATABASE_URL` to `~/devs/digio-history/.env.local` from `op://workbench/DIGIO_HISTORY_DATABASE_URL/credential`, once, if that file is missing. It prints a `WARN:` line when `op` cannot read the value.
+- A workbench with the file `~/.config/digio/op-workbench` has a 1Password service account. `workbench-start.sh` exports its token as `OP_SERVICE_ACCOUNT_TOKEN`, so T3 and each agent can run `op read`. `post-start.sh` then signs `gh` in with `op://workbench/GH_TOKEN/credential`, and it fails with a `FAIL: gh:` line when it cannot. A Codespace has no such file and keeps its own sign-in.
 - `scripts/post-start.sh` runs next, and at each start after that.
   It joins the tailnet and runs `git-hooks.sh`.
   If no Git identity is set, it sets `digbycampbell` with `96467498+digbycampbell@users.noreply.github.com`.

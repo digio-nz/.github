@@ -8,6 +8,9 @@
 set -u
 # The same as .devcontainer/devcontainer.json containerEnv; T3 and the agents it starts inherit it.
 export WORKBENCH=1 BASH_ENV="$HOME/.digio/node-auth-token.sh"
+# The token of the workbench's 1Password service account. T3 and each agent that it starts inherit it, so `op read` needs no sign-in.
+token_file="$HOME/.config/digio/op-workbench"
+if [ -r "$token_file" ]; then OP_SERVICE_ACCOUNT_TOKEN="$(tr -d '[:space:]' < "$token_file")"; export OP_SERVICE_ACCOUNT_TOKEN; fi
 scripts="$HOME/.digio/github"
 state="$HOME/.local/state/digio-workbench"
 mkdir -p "$state"

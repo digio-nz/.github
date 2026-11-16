@@ -79,7 +79,7 @@ cat > "$TEST_DIR/bin/op" <<'STUB'
 echo "op $*" >> "$CALLS"
 [ -z "${FAIL_op:-}" ] || exit 1
 [ "$1 $2 $3" = "inject --force --out-file" ] || exit 2
-sed 's|{{ op://orchestrator/DIGIO_HISTORY_DATABASE_URL/credential }}|postgres://fixture-history|' > "$4"
+sed 's|{{ op://workbench/DIGIO_HISTORY_DATABASE_URL/credential }}|postgres://fixture-history|' > "$4"
 STUB
 for script in fixture-skill session-close; do
   printf '#!/usr/bin/env bash\necho "%s.sh $*" >> "$CALLS"\n' "$script" \
@@ -144,7 +144,7 @@ HOME="$home" DIGIO_WORKSPACES="$ws" DIGIO_HISTORY_DATABASE_URL=set bash "$TEST_D
 if HOME="$home" DIGIO_WORKSPACES="$ws" FAIL_op=1 bash "$TEST_DIR/devcontainer/post-create.sh" > "$TEST_DIR/out" 2>&1; then :; else
   fail "post-create failed when op could not read the history URL; it warns only: $(cat "$TEST_DIR/out")"
 fi
-grep -Fq "WARN: session export: op cannot read op://orchestrator/DIGIO_HISTORY_DATABASE_URL/credential" "$TEST_DIR/out" \
+grep -Fq "WARN: session export: op cannot read op://workbench/DIGIO_HISTORY_DATABASE_URL/credential" "$TEST_DIR/out" \
   || fail "post-create did not warn that op cannot read the history URL: $(cat "$TEST_DIR/out")"
 [ ! -e "$ws/devs/digio-history/.env.local" ] || fail "post-create left a history file when op failed"
 

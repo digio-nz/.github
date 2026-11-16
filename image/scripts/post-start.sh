@@ -96,6 +96,22 @@ brief_drift() {
     *) echo "WARN: briefs: $SKILLS_DIR is $behind commits behind origin/main" >&2 ;;
   esac
 }
+# A workbench with the token file of its 1Password service account signs gh in with the fine-grained token of the vault workbench.
+# An image from before this step does not export the token, so this reads the file too.
+OP_TOKEN_FILE="$HOME/.config/digio/op-workbench"
+if [ -z "${OP_SERVICE_ACCOUNT_TOKEN:-}" ] && [ -r "$OP_TOKEN_FILE" ]; then
+  OP_SERVICE_ACCOUNT_TOKEN="$(tr -d '[:space:]' < "$OP_TOKEN_FILE")"; export OP_SERVICE_ACCOUNT_TOKEN
+fi
+if [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
+  if gh_token="$(op read op://workbench/GH_TOKEN/credential 2>/dev/null)" && [ -n "$gh_token" ]; then
+    if printf '%s' "$gh_token" | gh auth login --hostname github.com --git-protocol https --with-token && gh auth setup-git; then :
+    else echo "FAIL: gh: the token of op://workbench/GH_TOKEN did not sign in" >&2; failed=1; fi
+  else
+    echo "FAIL: gh: op cannot read op://workbench/GH_TOKEN/credential with the token of $OP_TOKEN_FILE" >&2; failed=1
+  fi
+  unset gh_token
+fi
+
 if [ -d "$SKILLS_DIR/.git" ]; then
   git -C "$SKILLS_DIR" pull -q --ff-only || true
   brief_drift
