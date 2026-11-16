@@ -44,7 +44,7 @@ done
 devs="$HOME/devs"
 [ -e "$devs" ] || [ ! -d "${DIGIO_WORKSPACES:-/workspaces}/devs" ] || devs="${DIGIO_WORKSPACES:-/workspaces}/devs"
 HISTORY_ENV="${DIGIO_HISTORY_ENV:-$devs/digio-history/.env.local}"
-HISTORY_REF=op://orchestrator/DIGIO_HISTORY_DATABASE_URL/credential
+HISTORY_REF=op://workbench/DIGIO_HISTORY_DATABASE_URL/credential
 if [ -z "${DIGIO_HISTORY_DATABASE_URL:-}" ] && [ ! -s "$HISTORY_ENV" ]; then
   if [ ! -d "${HISTORY_ENV%/*}" ]; then
     echo "WARN: session export: ${HISTORY_ENV%/*} is missing, so each session export fails; clone digio-nz/digio-history there, then rerun $SCRIPT_DIR/post-create.sh" >&2
