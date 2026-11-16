@@ -24,6 +24,8 @@ NO_MISTAKES_BIN="$(command -v no-mistakes)" || fail "no-mistakes is not on PATH"
 skills-manager-cli --version >/dev/null \
   || fail "skills-manager-cli did not report a version"
 
+[ -r /etc/claude-code/managed-settings.json ] \
+  || fail "$(id -un) cannot read /etc/claude-code/managed-settings.json, so Claude Code gets no managed settings"
 jq -e '.enabledPlugins["egm@egm"] == true and (.extraKnownMarketplaces.egm.source.ref | length == 40)' /etc/claude-code/managed-settings.json >/dev/null \
   || fail "the managed settings of Claude Code do not turn on the egm plugin at a pinned commit"
 
