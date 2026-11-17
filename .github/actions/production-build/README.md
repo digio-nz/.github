@@ -1,8 +1,8 @@
 # Production build
 
-This script builds one proven commit as a Production deployment for a Full-tier product. The [release brief](https://github.com/digio-nz/digio-michelin/blob/main/briefs/release.md#deployment-tiers) assigns the tiers.
+This script builds one proven commit as a Production deployment for a Gated product. The [release brief](https://github.com/digio-nz/digio-michelin/blob/main/briefs/release.md#deployment-paths) assigns the paths.
 
-A Full product's `vercel.json` disables automatic Git deployments of `main`. The product's manual release proves the commit, then calls this script, then migrates and promotes. The script never promotes, migrates, assigns a domain or cancels a deployment. The Vercel build of a Production deployment never migrates.
+A Gated product's `vercel.json` disables automatic Git deployments of `main`. The product's manual release proves the commit, then calls this script, then migrates and promotes. The script never promotes, migrates, assigns a domain or cancels a deployment. The Vercel build of a Production deployment never migrates.
 
 ## What a product holds
 

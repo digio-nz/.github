@@ -1,4 +1,4 @@
-// Build or reuse a STAGED Production deployment of one proven commit, for a Full-tier release.
+// Build or reuse a STAGED Production deployment of one proven commit, for a Gated release.
 // It never promotes, aliases, migrates or cancels. README.md owns the contract.
 // Run with Node 24 and no installed dependencies.
 import { realpathSync } from "node:fs";
