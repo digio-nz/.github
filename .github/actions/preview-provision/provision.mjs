@@ -453,7 +453,7 @@ async function findReusable(api, config, selection, branch, endpoint) {
   for (const listed of deployments) {
     const live = [...BUILD_STATES, "READY"].includes(listed.readyState);
     if (!live || ![undefined, null, "preview"].includes(listed.target)) continue;
-    const built = await api("vercel", `/v13/deployments/${listed.uid}?teamId=${team}`);
+    const built = await api("vercel", `/v13/deployments/${listed.uid}?teamId=${team}&withGitRepoInfo=true`);
     if (
       built.id === listed.uid &&
       [...BUILD_STATES, "READY"].includes(built.readyState) &&
@@ -492,7 +492,7 @@ async function deployExactHead(api, config, selection, branch, endpoint, before)
   );
   const deadline = Date.now() + BUILD_DEADLINE_MS;
   while (Date.now() < deadline) {
-    const built = await api("vercel", `/v13/deployments/${deployment.id}?teamId=${team}`);
+    const built = await api("vercel", `/v13/deployments/${deployment.id}?teamId=${team}&withGitRepoInfo=true`);
     requireThat(
       built.id === deployment.id && isOwnPreview(built, config, selection, branch, endpoint),
       "Deployment read-back does not match the requested Preview",
