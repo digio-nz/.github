@@ -32,6 +32,7 @@ const SHA = "a".repeat(40);
 const OTHER_SHA = "b".repeat(40);
 const PR = "pr:7";
 const FEATURE = "feature/example";
+const CI_RUN = "ci-run:555";
 
 const threeVariables = {
   schema: 1,
@@ -100,6 +101,19 @@ function fixture(config) {
     base: { ref: "main", repo: { full_name: repo, id: 42 } },
     head: { ref: FEATURE, sha: SHA, repo: { full_name: repo, id: 42 } },
   };
+  const ciRun = (overrides = {}) => ({
+    id: 555,
+    path: ".github/workflows/ci.yml",
+    status: "completed",
+    conclusion: "success",
+    event: "pull_request",
+    head_sha: SHA,
+    head_branch: FEATURE,
+    repository: { full_name: repo },
+    head_repository: { full_name: repo },
+    pull_requests: [{ number: 7, base: { ref: "main", repo: { full_name: repo } } }],
+    ...overrides,
+  });
   const production = {
     id: "prod",
     key: "DATABASE_URL",
@@ -139,7 +153,29 @@ function fixture(config) {
     failedWrite: false,
     envPagination: undefined,
     prReads: 0,
+    ciRun: ciRun(),
+    runs: [ciRun(), ciRun({ id: 556, event: "merge_group", head_branch: "gh-readonly-queue/x" })],
+    openPulls: [{ number: 7 }],
+    deployments: [],
   };
+  const detail = (id) => ({
+    id,
+    url: `${vercel.name}-${id.toLowerCase().replace("_", "-")}.vercel.app`,
+    projectId: vercel.project,
+    target: state.returnedTarget,
+    readyState: state.readyState,
+    gitSource: {
+      type: "github",
+      repoId: 42,
+      ref: state.deployRef ?? state.pr.head.ref,
+      sha: state.returnedSha,
+    },
+    meta: {
+      previewDatabaseBranch: child.id,
+      previewDatabaseHost: state.endpoint.host,
+      previewProvisioner: "v1",
+    },
+  });
   const calls = [];
   const api = async (service, path, body) => {
     calls.push({ service, path, body });
@@ -148,7 +184,14 @@ function fixture(config) {
       state.prReads += 1;
       result =
         state.stale && state.prReads > 1 ? { ...pr, head: { ...pr.head, sha: OTHER_SHA } } : pr;
-    } else if (service === "github" && path === `/repos/${repo}`) result = { id: 42 };
+    } else if (service === "github" && path.startsWith(`/repos/${repo}/actions/runs?`)) {
+      const sha = new URLSearchParams(path.split("?")[1]).get("head_sha");
+      result = { workflow_runs: state.runs.filter((run) => run.head_sha === sha) };
+    } else if (service === "github" && path === `/repos/${repo}/actions/runs/555`)
+      result = state.ciRun;
+    else if (service === "github" && path.startsWith(`/repos/${repo}/pulls?`))
+      result = state.openPulls;
+    else if (service === "github" && path === `/repos/${repo}`) result = { id: 42 };
     else if (service === "github" && path.endsWith("/git/ref/heads/main"))
       result = { object: { sha: SHA } };
     else if (service === "github" && path.endsWith("/git/ref/heads/standing-preview"))
@@ -195,23 +238,19 @@ function fixture(config) {
           ? uriOf(config).replace(hostOf(config), "production.example.invalid")
           : uriOf(config, path.endsWith("pooled=true")),
       };
-    else if (path.startsWith("/v13/deployments?"))
-      result = {
-        id: "dpl_TEST",
-        url: `${vercel.name}-fixture.vercel.app`,
-        target: state.returnedTarget,
-      };
-    else if (path.startsWith("/v13/deployments/dpl_TEST?")) {
+    else if (path.startsWith("/v7/deployments?")) result = { deployments: state.deployments };
+    else if (path.startsWith("/v13/deployments?")) {
+      state.deployRef = body.gitSource.ref;
+      state.readyState = state.retryReadyState ?? state.readyState;
+      result = { ...detail("dpl_TEST"), readyState: "QUEUED" };
+    } else if (path.startsWith("/v13/deployments/dpl_TEST?")) {
       project.targets.preview = { id: "dpl_TEST" };
       if (state.driftDuringBuild) state.production.updatedAt = 3;
-      result = {
-        id: "dpl_TEST",
-        projectId: vercel.project,
-        target: state.returnedTarget,
-        readyState: state.readyState,
-        gitSource: { sha: state.returnedSha },
-        meta: { previewDatabaseBranch: child.id },
-      };
+      result = detail("dpl_TEST");
+    } else if (path.startsWith("/v13/deployments/")) {
+      const id = path.split("/")[3].split("?")[0];
+      const existing = state.deployments.find((d) => d.uid === id);
+      result = { ...detail(id), ...existing.detail };
     } else throw new Error(`Unexpected fixture request ${service} ${path}`);
     return structuredClone(result);
   };
@@ -270,7 +309,11 @@ for (const config of CONFIGS) {
         name: vercel.name,
         project: vercel.project,
         gitSource: { type: "github", repoId: 42, ref: FEATURE, sha: SHA },
-        meta: { previewDatabaseBranch: "br-fixture", previewProvisioner: "v1" },
+        meta: {
+          previewDatabaseBranch: "br-fixture",
+          previewDatabaseHost: hostOf(config),
+          previewProvisioner: "v1",
+        },
       });
       assert.ok(!JSON.stringify(result).includes("fixture-only"));
     });
@@ -382,6 +425,145 @@ for (const config of CONFIGS) {
         assert.deepEqual(f.writes(), []);
       });
     }
+
+    const prProof = (s, change) => (s.runs = [{ ...s.ciRun, ...change(s.ciRun) }]);
+    const proofRefusals = {
+      "missing CI proof": (s) => (s.runs = []),
+      "failed CI": (s) => prProof(s, () => ({ conclusion: "failure" })),
+      "cancelled CI": (s) => prProof(s, () => ({ conclusion: "cancelled" })),
+      "CI still running": (s) => prProof(s, () => ({ status: "in_progress", conclusion: null })),
+      "a workflow named CI at another path": (s) =>
+        prProof(s, () => ({ path: ".github/workflows/other.yml" })),
+      "CI from a fork": (s) => prProof(s, () => ({ head_repository: { full_name: "outside/x" } })),
+      "CI for an older head": (s) => prProof(s, () => ({ head_sha: OTHER_SHA })),
+      "merge-group proof for a PR": (s) => prProof(s, () => ({ event: "merge_group" })),
+    };
+    for (const [kind, arrange] of Object.entries(proofRefusals)) {
+      it(`refuses ${kind} before any write`, async () => {
+        const f = fixture(config);
+        arrange(f.state);
+        await assert.rejects(provisionPreview(f.api, config, "apply", PR), finding);
+        assert.deepEqual(f.writes(), []);
+      });
+    }
+
+    it("deploys the PR that a successful CI run names", async () => {
+      const f = fixture(config);
+      const result = await provisionPreview(f.api, config, "apply", CI_RUN);
+      assert.equal(result.sha, SHA);
+      assert.equal(result.branch, FEATURE);
+      assert.ok(!f.calls.some((call) => call.path.includes("/pulls?")));
+    });
+
+    it("resolves a CI run with no listed PR through the open PRs of its branch", async () => {
+      const f = fixture(config);
+      f.state.ciRun.pull_requests = [];
+      await provisionPreview(f.api, config, "apply", CI_RUN);
+      const lookup = f.calls.find((call) => call.path.includes("/pulls?"));
+      assert.equal(
+        new URLSearchParams(lookup.path.split("?")[1]).get("head"),
+        `${config.repo.split("/")[0]}:${FEATURE}`,
+      );
+    });
+
+    const wakeRefusals = {
+      "failed CI run": (s) => (s.ciRun.conclusion = "failure"),
+      "cancelled CI run": (s) => (s.ciRun.conclusion = "cancelled"),
+      "CI run at another path": (s) => (s.ciRun.path = ".github/workflows/ci-copy.yml"),
+      "CI run from a fork": (s) => (s.ciRun.head_repository = { full_name: "outside/x" }),
+      "CI run for a push": (s) => (s.ciRun.event = "push"),
+      "CI run for an older head": (s) => {
+        s.ciRun.head_sha = OTHER_SHA;
+        s.runs.push({ ...s.ciRun });
+      },
+      "CI run with no PR and no open PR": (s) => {
+        s.ciRun.pull_requests = [];
+        s.openPulls = [];
+      },
+      "CI run with no PR and two open PRs": (s) => {
+        s.ciRun.pull_requests = [];
+        s.openPulls = [{ number: 7 }, { number: 8 }];
+      },
+      "CI run for a Dependabot PR": (s) => (s.pr.user.login = "dependabot[bot]"),
+    };
+    for (const [kind, arrange] of Object.entries(wakeRefusals)) {
+      it(`refuses a wake-up from a ${kind} before any write`, async () => {
+        const f = fixture(config);
+        arrange(f.state);
+        await assert.rejects(provisionPreview(f.api, config, "apply", CI_RUN), finding);
+        assert.deepEqual(f.writes(), []);
+      });
+    }
+
+    const existing = (uid, readyState, detail = {}) => ({
+      uid,
+      readyState,
+      target: null,
+      detail: { readyState: "READY", ...detail },
+    });
+
+    for (const state of ["QUEUED", "BUILDING", "READY"]) {
+      it(`reuses this provisioner's ${state} deployment of the same head`, async () => {
+        const f = fixture(config);
+        f.state.branches.push(f.state.child);
+        f.state.deployments = [existing("dpl_OLD", state)];
+        const result = await provisionPreview(f.api, config, "apply", PR);
+        assert.equal(result.deploymentId, "dpl_OLD");
+        assert.equal(deploymentRequested(f), false);
+        const query = new URLSearchParams(
+          f.calls.find((call) => call.path.startsWith("/v7/")).path.split("?")[1],
+        );
+        assert.deepEqual(
+          [query.get("projectId"), query.get("sha"), query.get("branch")],
+          [vercel.project, SHA, FEATURE],
+        );
+      });
+    }
+
+    const notReusable = {
+      error: existing("dpl_OLD", "ERROR"),
+      canceled: existing("dpl_OLD", "CANCELED"),
+      "error on read-back": existing("dpl_OLD", "READY", { readyState: "ERROR" }),
+      "production target": existing("dpl_OLD", "READY", { target: "production" }),
+      "another head": existing("dpl_OLD", "READY", {
+        gitSource: { type: "github", repoId: 42, ref: FEATURE, sha: OTHER_SHA },
+      }),
+      "another branch": existing("dpl_OLD", "READY", {
+        gitSource: { type: "github", repoId: 42, ref: "other", sha: SHA },
+      }),
+      "an automatic Git build": existing("dpl_OLD", "READY", { meta: {} }),
+      "another database branch": existing("dpl_OLD", "READY", {
+        meta: {
+          previewDatabaseBranch: "br-other",
+          previewDatabaseHost: hostOf(config),
+          previewProvisioner: "v1",
+        },
+      }),
+      "another endpoint host": existing("dpl_OLD", "READY", {
+        meta: {
+          previewDatabaseBranch: "br-fixture",
+          previewDatabaseHost: `ep-other${neon.hostSuffix}`,
+          previewProvisioner: "v1",
+        },
+      }),
+    };
+    for (const [kind, deployment] of Object.entries(notReusable)) {
+      it(`deploys afresh instead of reusing ${kind}`, async () => {
+        const f = fixture(config);
+        f.state.deployments = [deployment];
+        const result = await provisionPreview(f.api, config, "apply", PR);
+        assert.equal(result.deploymentId, "dpl_TEST");
+        assert.equal(deploymentRequested(f), true);
+      });
+    }
+
+    it("refuses the standing Preview without merge-group or push proof", async () => {
+      const f = fixture(config);
+      f.state.child.name = "preview/standing-preview";
+      f.state.runs = f.state.runs.filter((run) => run.event === "pull_request");
+      await assert.rejects(provisionPreview(f.api, config, "apply", "standing-preview"), finding);
+      assert.deepEqual(f.writes(), []);
+    });
 
     for (const kind of [
       "wrongUri",
@@ -586,10 +768,21 @@ describe("trusted sources", () => {
     }
   });
 
+  it("accepts vercel.json with main disabled", () => {
+    const root = product();
+    writeFileSync(
+      join(root, SOURCES.vercel),
+      JSON.stringify({ git: { deploymentEnabled: { "**": false, main: false } } }),
+    );
+    assert.deepEqual(assertTrustedSources(root), twoVariables);
+  });
+
   for (const [kind, enabled] of Object.entries({
     "no default refusal": { main: true },
-    "main disabled": { "**": false, main: false },
+    "main unnamed": { "**": false },
+    "main not a boolean": { "**": false, main: "true" },
     "another enabled branch": { "**": false, main: true, "preview/**": true },
+    "another enabled branch with main disabled": { "**": false, main: false, "x/**": true },
   })) {
     it(`refuses vercel.json with ${kind}`, () => {
       const root = product();
@@ -597,7 +790,7 @@ describe("trusted sources", () => {
         join(root, SOURCES.vercel),
         JSON.stringify({ git: { deploymentEnabled: enabled } }),
       );
-      assert.throws(() => assertTrustedSources(root), /automatic Git deployments for main only/);
+      assert.throws(() => assertTrustedSources(root), /disable automatic Git deployments/);
     });
   }
 
@@ -635,6 +828,7 @@ describe("trusted workflow text", () => {
     assert.match(text, /persist-credentials: false/);
     assert.match(text, /package-manager-cache: false/);
     assert.ok(!text.includes("\n  pull_request:\n"));
+    assert.ok(!text.includes("pull_request_target"));
   });
 
   it("pins every action to a full commit", () => {
@@ -651,21 +845,39 @@ describe("trusted workflow text", () => {
     assert.match(text, /environment: preview-provision\n/);
     assert.match(text, /github\.ref == 'refs\/heads\/main'/);
     assert.match(text, /runs-on: ubuntu-latest\n/);
-    assert.match(text, /permissions:\n {6}contents: read\n {6}pull-requests: read\n/);
+    assert.match(
+      text,
+      /permissions:\n {6}actions: read\n {6}contents: read\n {6}pull-requests: read\n/,
+    );
   });
 
-  it("refuses forks, Dependabot and unsuccessful or foreign mirror events", () => {
+  it("wakes only on successful same-repository CI or mirror runs, by workflow path", () => {
+    assert.match(text, /workflows: \[CI, Standing Preview\]\n {4}types: \[completed\]\n/);
     for (const condition of [
-      "github.event.pull_request.head.repo.full_name == github.repository",
-      "github.event.pull_request.user.login != 'dependabot[bot]'",
-      "!startsWith(github.event.pull_request.head.ref, 'dependabot/')",
       "github.event.workflow_run.conclusion == 'success'",
-      "github.event.workflow_run.event == 'push'",
-      "github.event.workflow_run.head_branch == 'main'",
       "github.event.workflow_run.head_repository.full_name == github.repository",
+      "github.event.workflow_run.path == '.github/workflows/standing-preview.yml' &&\n      github.event.workflow_run.event == 'push' &&\n      github.event.workflow_run.head_branch == 'main'",
+      "github.event.workflow_run.path == '.github/workflows/ci.yml' &&\n      github.event.workflow_run.event == 'pull_request'",
+      "github.event.workflow_run.actor.login != 'dependabot[bot]'",
+      "!startsWith(github.event.workflow_run.head_branch, 'dependabot/')",
     ]) {
       assert.ok(text.includes(condition), condition);
     }
+  });
+
+  it("passes a CI wake-up as its run ID and never defaults it to the standing Preview", () => {
+    const selector = text.match(/^ {10}selector: (.+)$/m)[1];
+    assert.ok(selector.includes("format('ci-run:{0}', github.event.workflow_run.id)"));
+    assert.ok(
+      selector.includes(
+        "github.event.workflow_run.path == '.github/workflows/standing-preview.yml' && 'standing-preview'",
+      ),
+    );
+    assert.ok(selector.endsWith("|| 'no-selector' }}"));
+    assert.throws(
+      () => parseArgs(["apply", "no-selector"]),
+      (error) => error.exitCode === 2,
+    );
   });
 });
 
