@@ -3,13 +3,9 @@
 name: Preview provision
 
 on:
-  pull_request_target:
-    branches: [main]
-    types: [opened, reopened, synchronize]
   workflow_run:
-    workflows: [Standing Preview]
+    workflows: [CI, Standing Preview]
     types: [completed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       selector:
@@ -21,26 +17,29 @@ permissions:
   contents: read
 
 concurrency:
-  group: preview-provision-${{ github.event_name == 'pull_request_target' && format('pr:{0}', github.event.number) || inputs.selector || 'standing-preview' }}
+  group: preview-provision-${{ github.event_name == 'workflow_dispatch' && inputs.selector || github.event.workflow_run.path == '.github/workflows/ci.yml' && format('branch:{0}', github.event.workflow_run.head_branch) || 'standing-preview' }}
   cancel-in-progress: false
 
 jobs:
   provision:
+    # The provisioner proves CI through the API; these conditions only skip events that cannot qualify.
     if: >-
       github.ref == 'refs/heads/main' &&
-      (github.event_name != 'workflow_run' ||
+      (github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      ((github.event.workflow_run.path == '.github/workflows/standing-preview.yml' &&
       github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.head_repository.full_name == github.repository)) &&
-      (github.event_name != 'pull_request_target' ||
-      (github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.user.login != 'dependabot[bot]' &&
-      !startsWith(github.event.pull_request.head.ref, 'dependabot/')))
+      github.event.workflow_run.head_branch == 'main') ||
+      (github.event.workflow_run.path == '.github/workflows/ci.yml' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login != 'dependabot[bot]' &&
+      !startsWith(github.event.workflow_run.head_branch, 'dependabot/')))))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: preview-provision
     permissions:
+      actions: read
       contents: read
       pull-requests: read
     steps:
@@ -60,4 +59,4 @@ jobs:
           VERCEL_PREVIEW_TOKEN: ${{ secrets.VERCEL_PREVIEW_TOKEN }}
         with:
           mode: apply
-          selector: ${{ github.event_name == 'pull_request_target' && format('pr:{0}', github.event.number) || inputs.selector || 'standing-preview' }}
+          selector: ${{ github.event_name == 'workflow_dispatch' && inputs.selector || github.event.workflow_run.path == '.github/workflows/ci.yml' && format('ci-run:{0}', github.event.workflow_run.id) || github.event.workflow_run.path == '.github/workflows/standing-preview.yml' && 'standing-preview' || 'no-selector' }}

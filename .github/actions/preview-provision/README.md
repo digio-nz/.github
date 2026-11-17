@@ -11,11 +11,37 @@ The action creates or reuses `preview/<git branch>` under a product's synthetic 
 | `scripts/preview/provision.json` | Product identifiers: repository, Vercel project, Neon project, root branch and endpoint, host class, database, role and variable names. |
 | `scripts/preview/database-guard.mjs` | A byte-identical copy of `guard.mjs`. The Vercel build runs it before migration. |
 | `.github/workflows/preview-provision.yml` | A copy of `trusted-workflow.yml`. Only the action pin can differ. |
-| `vercel.json` | `git.deploymentEnabled` enables `main` only, with `"**": false`. |
+| `.github/workflows/ci.yml` | The workflow named `CI`. Its successful runs prove a commit. |
+| `.github/workflows/standing-preview.yml` | The workflow named `Standing Preview`, for a product with a standing Preview. |
+| `vercel.json` | `git.deploymentEnabled` has `"**": false`, `main` as `true` or `false`, and no other enabled branch. |
 
 Keep product identifiers in the product. This repository is public.
 
 The provisioner compares these files with its own commit before any API request, and fails on a difference. To change the guard or workflow, change them here, then change the product's copies and pin in one PR.
+
+## When a Preview deploys
+
+Successful CI wakes the workflow. A failed, cancelled, fork or Dependabot CI run deploys nothing.
+
+| Wake-up | Selector | CI proof that the provisioner requires |
+| --- | --- | --- |
+| A `CI` run completes after a `pull_request` event | `ci-run:<run id>` | A `pull_request` run for the current PR head |
+| A `Standing Preview` run completes after a push to `main` | `standing-preview` | A `merge_group` or `push` run for the current `main` |
+| A manual dispatch | `pr:<number>` or `standing-preview` | The same proof as the automatic wake-up |
+
+The workflow name only starts the workflow. The provisioner reads the runs for the exact SHA through the GitHub API before any write. A qualifying run has the path `.github/workflows/ci.yml`, the conclusion `success`, the selected event, and this repository as its head repository. If no run qualifies, the provisioner stops with a finding.
+
+For a `ci-run` wake-up, the provisioner reads the PR from the run. If the run lists no PR, the provisioner looks for open PRs into `main` from the run's branch. If it finds no PR or more than one, it stops with a finding. If the run proves an older head than the current PR head, it stops, and the newer head waits for its own CI.
+
+A pull_request CI run uses the PR's own workflow file. Proof from a same-repository PR therefore depends on the trust in people who can push branches.
+
+Before a deployment request, the provisioner looks for a deployment that it made earlier. It lists the project's deployments for the SHA and branch, then reads each one back. It reuses a deployment in `QUEUED`, `INITIALIZING`, `BUILDING` or `READY` only if the deployment has all of these properties:
+
+- It is not a Production deployment.
+- Its `gitSource` names the same repository, branch and SHA.
+- Its `meta` names this provisioner, the same Neon branch ID and the same endpoint host.
+
+A deployment in `ERROR` or `CANCELED`, or with other values, is not reused, so a retry requests a new deployment. The provisioner does not cancel a deployment.
 
 ## Security boundaries
 
@@ -23,7 +49,7 @@ The provisioner compares these files with its own commit before any API request,
 - The GitHub environment `preview-provision` allows only `main`. It holds `NEON_PREVIEW_API_KEY`, scoped to the product's Preview project, and `VERCEL_PREVIEW_TOKEN`, scoped to the product's Vercel project.
 - A Vercel project token can affect Production. Trusted code and Preview-only requests enforce the boundary, not the token. Do not put either credential in application build variables.
 - The guard is a safety check, not a security boundary. PR code can change its own copy. The boundary is that Preview credentials and data are synthetic.
-- The provisioner refuses these sources: a fork, a Dependabot or merge-queue branch, a stale head and a standing branch that differs from `main`.
+- The provisioner refuses these sources: a fork, a Dependabot or merge-queue branch, a stale head, a head without CI proof and a standing branch that differs from `main`.
 - The provisioner refuses these states: wrong ancestry, an integration-owned Preview variable, a database variable shared by Preview and Production, and an incomplete inventory.
 - Any change to Production entries or the Production target stops the run. The provisioner never repairs state with a rollback.
 
@@ -33,6 +59,7 @@ From a reviewed product checkout, with this repository beside it:
 
 ```sh
 node ../.github/.github/actions/preview-provision/provision.mjs check pr:<number> --cli-auth
+node ../.github/.github/actions/preview-provision/provision.mjs check ci-run:<run id> --cli-auth
 node ../.github/.github/actions/preview-provision/provision.mjs check standing-preview --cli-auth
 node ../.github/.github/actions/preview-provision/provision.mjs list --cli-auth
 node ../.github/.github/actions/preview-provision/provision.mjs test
@@ -77,7 +104,7 @@ Existing deployments keep their captured environments. Preserving them does not 
 
 If provisioning fails, keep Preview login disabled and repair the Preview-only configuration. Do not reset the root, delete branches, reconnect the coupled integration, restore old Preview credentials or dispatch a Production release.
 
-A lost branch-create response triggers a fresh inventory read, not a reset. Retries reuse a valid database branch and request a new Preview deployment.
+A lost branch-create response triggers a fresh inventory read, not a reset. Retries reuse a valid database branch. They reuse a live deployment of the same head, and request a new deployment after an error.
 
 ## Proof
 

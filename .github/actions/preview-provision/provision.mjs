@@ -11,6 +11,10 @@ import { assertDatabaseUrl, MARKER } from "./guard.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STANDING = "standing-preview";
+const SELECTOR = new RegExp(`^(pr:[1-9][0-9]*|ci-run:[1-9][0-9]*|${STANDING})$`);
+const CI_PATH = ".github/workflows/ci.yml";
+const PROVISIONER = "v1";
+const BUILD_STATES = ["QUEUED", "INITIALIZING", "BUILDING"];
 const BUILD_DEADLINE_MS = 20 * 60 * 1000;
 
 export const SOURCES = {
@@ -92,11 +96,59 @@ export function assertTrustedSources(root) {
   const enabled = JSON.parse(read(SOURCES.vercel)).git?.deploymentEnabled ?? {};
   requireThat(
     enabled["**"] === false &&
-      enabled.main === true &&
+      typeof enabled.main === "boolean" &&
       Object.entries(enabled).every(([branch, on]) => branch === "main" || on === false),
-    `${SOURCES.vercel} must enable automatic Git deployments for main only`,
+    `${SOURCES.vercel} must name main and disable automatic Git deployments for every other branch`,
   );
   return parseConfig(JSON.parse(read(SOURCES.config)));
+}
+
+function isCiProof(run, repo, sha, events) {
+  return (
+    run?.path === CI_PATH &&
+    run.status === "completed" &&
+    run.conclusion === "success" &&
+    run.head_sha === sha &&
+    events.includes(run.event) &&
+    run.repository?.full_name === repo &&
+    run.head_repository?.full_name === repo
+  );
+}
+
+async function requireCiProof(api, repo, sha, events) {
+  const query = new URLSearchParams({ head_sha: sha, status: "success", per_page: "100" });
+  const { workflow_runs: runs } = await api("github", `/repos/${repo}/actions/runs?${query}`);
+  requireThat(Array.isArray(runs), "GitHub workflow run inventory is missing");
+  requireThat(
+    runs.some((run) => isCiProof(run, repo, sha, events)),
+    `No successful ${CI_PATH} run (${events.join(" or ")}) proves ${sha}`,
+  );
+}
+
+async function pullFromCiRun(api, repo, runId) {
+  const run = await api("github", `/repos/${repo}/actions/runs/${runId}`);
+  requireThat(
+    run.id === Number(runId) && isCiProof(run, repo, run.head_sha, ["pull_request"]),
+    `CI run ${runId} is not a successful same-repository pull_request run of ${CI_PATH}`,
+  );
+  let numbers = (run.pull_requests ?? [])
+    .filter((pr) => pr.base?.repo?.full_name === repo && pr.base.ref === "main")
+    .map((pr) => pr.number);
+  if (numbers.length === 0) {
+    const query = new URLSearchParams({
+      state: "open",
+      base: "main",
+      head: `${repo.split("/")[0]}:${run.head_branch}`,
+    });
+    const pulls = await api("github", `/repos/${repo}/pulls?${query}`);
+    requireThat(Array.isArray(pulls), "GitHub PR inventory is missing");
+    numbers = pulls.map((pr) => pr.number);
+  }
+  requireThat(
+    numbers.length === 1,
+    `CI run ${runId} maps to ${numbers.length} open PRs into main; dispatch pr:<number> instead`,
+  );
+  return { number: numbers[0], sha: run.head_sha };
 }
 
 export async function selectPreview(api, config, selector) {
@@ -107,10 +159,14 @@ export async function selectPreview(api, config, selector) {
     const standing = await api("github", `/repos/${repo}/git/ref/heads/${STANDING}`);
     requireThat(main.object.sha === standing.object.sha, `${STANDING} does not match current main`);
     requireThat(/^[a-f0-9]{40}$/.test(standing.object.sha), `Invalid ${STANDING} SHA`);
+    await requireCiProof(api, repo, standing.object.sha, ["merge_group", "push"]);
     return { branch: selector, sha: standing.object.sha, repoId: repository.id };
   }
-  requireThat(/^pr:[1-9][0-9]*$/.test(selector), `Expected pr:<number> or ${STANDING}`);
-  const pr = await api("github", `/repos/${repo}/pulls/${selector.slice(3)}`);
+  requireThat(SELECTOR.test(selector), `Expected pr:<number>, ci-run:<id> or ${STANDING}`);
+  const wake = selector.startsWith("ci-run:")
+    ? await pullFromCiRun(api, repo, selector.slice(7))
+    : { number: selector.slice(3) };
+  const pr = await api("github", `/repos/${repo}/pulls/${wake.number}`);
   requireThat(
     pr.state === "open" && pr.base.ref === "main" && pr.base.repo.full_name === repo,
     "Preview requires an open PR into this repository's main",
@@ -134,6 +190,11 @@ export async function selectPreview(api, config, selector) {
       /^[a-f0-9]{40}$/.test(sha),
     "Invalid Preview ref or SHA",
   );
+  requireThat(
+    !wake.sha || wake.sha === sha,
+    "The CI run proves an older PR head; the current head waits for its own CI",
+  );
+  await requireCiProof(api, repo, sha, ["pull_request"]);
   return { branch: ref, sha, repoId: pr.head.repo.id };
 }
 
@@ -361,19 +422,68 @@ function assertPreviewScopes(after, config, selection, endpoint) {
   }
 }
 
-async function deployExactHead(api, config, selection, branch, before) {
-  const { project, team, name } = config.vercel;
-  const deployment = await api("vercel", `/v13/deployments?teamId=${team}`, {
-    name,
-    project,
-    gitSource: {
-      type: "github",
-      repoId: selection.repoId,
-      ref: selection.branch,
-      sha: selection.sha,
-    },
-    meta: { previewDatabaseBranch: branch.id, previewProvisioner: "v1" },
+function isOwnPreview(built, config, selection, branch, endpoint) {
+  return (
+    /^dpl_[a-zA-Z0-9]+$/.test(built.id) &&
+    built.projectId === config.vercel.project &&
+    [undefined, null, "preview"].includes(built.target) &&
+    /^[a-z0-9-]+\.vercel\.app$/.test(built.url) &&
+    built.gitSource?.type === "github" &&
+    Number(built.gitSource.repoId) === selection.repoId &&
+    built.gitSource.ref === selection.branch &&
+    built.gitSource.sha === selection.sha &&
+    built.meta?.previewProvisioner === PROVISIONER &&
+    built.meta.previewDatabaseBranch === branch.id &&
+    built.meta.previewDatabaseHost === endpoint.host
+  );
+}
+
+// The list response carries no gitSource, so each candidate is read back in full before reuse.
+async function findReusable(api, config, selection, branch, endpoint) {
+  const { project, team } = config.vercel;
+  const query = new URLSearchParams({
+    projectId: project,
+    teamId: team,
+    sha: selection.sha,
+    branch: selection.branch,
+    limit: "20",
   });
+  const { deployments } = await api("vercel", `/v7/deployments?${query}`);
+  requireThat(Array.isArray(deployments), "Vercel deployment inventory is missing");
+  for (const listed of deployments) {
+    const live = [...BUILD_STATES, "READY"].includes(listed.readyState);
+    if (!live || ![undefined, null, "preview"].includes(listed.target)) continue;
+    const built = await api("vercel", `/v13/deployments/${listed.uid}?teamId=${team}&withGitRepoInfo=true`);
+    if (
+      built.id === listed.uid &&
+      [...BUILD_STATES, "READY"].includes(built.readyState) &&
+      isOwnPreview(built, config, selection, branch, endpoint)
+    ) {
+      return built;
+    }
+  }
+  return undefined;
+}
+
+async function deployExactHead(api, config, selection, branch, endpoint, before) {
+  const { project, team, name } = config.vercel;
+  const deployment =
+    (await findReusable(api, config, selection, branch, endpoint)) ??
+    (await api("vercel", `/v13/deployments?teamId=${team}`, {
+      name,
+      project,
+      gitSource: {
+        type: "github",
+        repoId: selection.repoId,
+        ref: selection.branch,
+        sha: selection.sha,
+      },
+      meta: {
+        previewDatabaseBranch: branch.id,
+        previewDatabaseHost: endpoint.host,
+        previewProvisioner: PROVISIONER,
+      },
+    }));
   requireThat(
     /^dpl_[a-zA-Z0-9]+$/.test(deployment.id) &&
       [undefined, null, "preview"].includes(deployment.target) &&
@@ -382,13 +492,9 @@ async function deployExactHead(api, config, selection, branch, before) {
   );
   const deadline = Date.now() + BUILD_DEADLINE_MS;
   while (Date.now() < deadline) {
-    const built = await api("vercel", `/v13/deployments/${deployment.id}?teamId=${team}`);
+    const built = await api("vercel", `/v13/deployments/${deployment.id}?teamId=${team}&withGitRepoInfo=true`);
     requireThat(
-      built.id === deployment.id &&
-        built.projectId === project &&
-        [undefined, null, "preview"].includes(built.target) &&
-        built.gitSource?.sha === selection.sha &&
-        built.meta?.previewDatabaseBranch === branch.id,
+      built.id === deployment.id && isOwnPreview(built, config, selection, branch, endpoint),
       "Deployment read-back does not match the requested Preview",
     );
     if (built.readyState === "READY") {
@@ -396,7 +502,7 @@ async function deployExactHead(api, config, selection, branch, before) {
       return { deploymentId: deployment.id, url: `https://${deployment.url}` };
     }
     requireThat(
-      ["QUEUED", "INITIALIZING", "BUILDING"].includes(built.readyState),
+      BUILD_STATES.includes(built.readyState),
       "Preview deployment failed or was cancelled",
     );
     if (Date.now() >= deadline) break;
@@ -427,7 +533,8 @@ export async function provisionPreview(api, config, mode, selector) {
   );
   const result = { ...selection, branchId: branch.id, host: endpoint.host };
   if (mode === "check") return { ...result, verification: "metadata-only" };
-  return { ...result, ...(await deployExactHead(api, config, selection, branch, before)) };
+  const deployed = await deployExactHead(api, config, selection, branch, endpoint, before);
+  return { ...result, ...deployed };
 }
 
 export function apiClient(cli) {
@@ -512,7 +619,7 @@ function runTests(root) {
   requireThat(result.status === 0, "Preview provisioning self-test failed");
 }
 
-const USAGE = `Usage: provision.mjs <apply|check|export> <pr:number|${STANDING}> [--root dir] [--cli-auth], list [--root dir] [--cli-auth], or test [--root dir]`;
+const USAGE = `Usage: provision.mjs <apply|check|export> <pr:number|ci-run:id|${STANDING}> [--root dir] [--cli-auth], list [--root dir] [--cli-auth], or test [--root dir]`;
 
 export function parseArgs(argv) {
   const options = { root: ".", cli: false, positional: [] };
@@ -527,7 +634,7 @@ export function parseArgs(argv) {
     ((mode === "list" || mode === "test") && count === 1 && !(mode === "test" && options.cli)) ||
       (["apply", "check", "export"].includes(mode) &&
         count === 2 &&
-        new RegExp(`^(pr:[1-9][0-9]*|${STANDING})$`).test(selector)),
+        SELECTOR.test(selector)),
     USAGE,
     2,
   );
