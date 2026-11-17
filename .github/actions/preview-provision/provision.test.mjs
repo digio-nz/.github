@@ -252,6 +252,7 @@ function fixture(config) {
       const existing = state.deployments.find((d) => d.uid === id);
       result = { ...detail(id), ...existing.detail };
     } else throw new Error(`Unexpected fixture request ${service} ${path}`);
+    if (path.startsWith("/v13/deployments/") && new URLSearchParams(path.split("?")[1]).get("withGitRepoInfo") !== "true") delete result.gitSource;
     return structuredClone(result);
   };
   return { api, state, calls, writes: () => calls.filter((call) => call.body !== undefined) };
