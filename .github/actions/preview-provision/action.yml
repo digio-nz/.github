@@ -1,8 +1,8 @@
-# The Full-tier Preview provisioner as a composite action. README.md owns the contract.
+# The Gated Preview provisioner as a composite action. README.md owns the contract.
 # The step that uses this action sets GITHUB_TOKEN, NEON_PREVIEW_API_KEY and VERCEL_PREVIEW_TOKEN for apply and check.
 # Inputs go in through env, never into the script text.
 name: Preview Provision
-description: Provision a synthetic Preview database branch and an exact-SHA Preview deployment for a Full-tier product.
+description: Provision a synthetic Preview database branch and an exact-SHA Preview deployment for a Gated product.
 inputs:
   mode:
     description: apply, check, export, list or test

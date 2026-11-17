@@ -29,7 +29,7 @@ The workflows pin the labeller action to a commit; that revision's `skills.ref` 
 It does not authorize PR writes or cross-repository issue reads.
 Existing reader App credentials remain an alternative for checkout and allow cross-repository issue reads where configured.
 
-Full-tier products pin `.github/actions/preview-provision`, which owns Preview provisioning. Its [README](.github/actions/preview-provision/README.md) states the contract. Product identifiers stay in the products.
+Gated products pin `.github/actions/preview-provision`, which owns Preview provisioning. Its [README](.github/actions/preview-provision/README.md) states the contract. Product identifiers stay in the products.
 
 Run the offline checks:
 
