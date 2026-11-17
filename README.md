@@ -31,10 +31,13 @@ Existing reader App credentials remain an alternative for checkout and allow cro
 
 Full-tier products pin `.github/actions/preview-provision`, which owns Preview provisioning. Its [README](.github/actions/preview-provision/README.md) states the contract. Product identifiers stay in the products.
 
+Full-tier products also pin `.github/actions/production-build`, which builds the proven commit as a staged Production deployment during a manual release. Its [README](.github/actions/production-build/README.md) states the contract.
+
 Run the offline checks:
 
 ```sh
 node --test .github/actions/preview-provision/provision.test.mjs
+node --test .github/actions/production-build/production-build.test.mjs
 bash .github/actions/discipline/gates-selftest.sh
 bash .github/actions/discipline/no-secret/secret-guard-selftest.sh
 bash .github/actions/discipline/selftest-workflow.sh .github/workflows/discipline.yml
