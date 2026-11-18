@@ -1,6 +1,6 @@
 # Preview provision
 
-This action provisions Previews for Full-tier products only. The [release brief](https://github.com/digio-nz/digio-michelin/blob/main/briefs/release.md#deployment-tiers) assigns the tiers. Mid and Minimal products do not use it.
+This action provisions Previews for Gated products only. The [release brief](https://github.com/digio-nz/digio-michelin/blob/main/briefs/release.md#deployment-paths) assigns the paths. Direct products do not use it.
 
 The action creates or reuses `preview/<git branch>` under a product's synthetic root, writes branch-scoped Preview database variables and requests a Preview deployment of the exact SHA. It never writes a Production variable, resets or deletes a branch, or promotes a deployment.
 

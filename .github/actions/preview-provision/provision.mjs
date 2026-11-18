@@ -1,4 +1,4 @@
-// Provision only synthetic Preview branches for a Full-tier product, from trusted main code.
+// Provision only synthetic Preview branches for a Gated product, from trusted main code.
 // No request writes a Production variable, deletes a branch or promotes a deployment.
 // README.md owns the contract. Run with Node 24 and no installed dependencies.
 import { spawnSync } from "node:child_process";
