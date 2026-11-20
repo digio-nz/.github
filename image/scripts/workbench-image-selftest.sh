@@ -229,8 +229,9 @@ cat > "$tmp/latest-bin/apt-cache" <<'SH'
 [ "$1" = policy ] || exit 9
 package="$2"
 case "${FAIL_LOOKUP:-}:$package" in
-  apt:apt-pkg | op:1password-cli | feature-sshd:openssh-server) candidate='(none)' ;;
+  apt:apt-pkg | op:1password-cli | feature-sshd:openssh-server | feature-docker:moby-cli) candidate='(none)' ;;
   nodesource:nodejs) candidate='(none)' ;;
+  *:docker-ce-cli) candidate="${DOCKER_CE_CANDIDATE:-(none)}" ;;
   *) candidate="${CANDIDATE_DEB_VERSION:-1:1.2.3-2}" ;;
 esac
 printf '  Installed: 1:1.2.3-1\n  Candidate: %s\n' "$candidate"
@@ -239,7 +240,11 @@ cat > "$tmp/latest-bin/dpkg-query" <<'SH'
 #!/bin/sh
 for package do :; done
 [ "${FAIL_DPKG_QUERY:-}" != "$package" ] || exit 1
-echo "${INSTALLED_DEB_VERSION:-1:1.2.3-1}"
+case "$*" in
+  *'${Status}'*)
+    case " ${DEB_INSTALLED:-moby-cli} " in *" $package "*) echo 'install ok installed' ;; *) echo 'unknown ok not-installed' ;; esac ;;
+  *) echo "${INSTALLED_DEB_VERSION:-1:1.2.3-1}" ;;
+esac
 SH
 ln -s "$(command -v dpkg)" "$tmp/latest-bin/dpkg"
 cat > "$tmp/latest-bin/curl" <<'SH'
@@ -254,8 +259,11 @@ case "$url" in
     echo 1.3.0; exit 0 ;;
   *rhysd/actionlint/releases/latest) key=gh-release; repo=rhysd/actionlint; tag=v1.3.0 ;;
   *cli/cli/releases/latest) key=feature-gh; repo=cli/cli; tag=v1.3.0 ;;
-  *moby/moby/releases/latest) key=feature-docker; repo=moby/moby; tag=docker-v1.3.0 ;;
-  *tailscale/tailscale/releases/latest) key=feature-tailscale; repo=tailscale/tailscale; tag=v1.3.0 ;;
+  'https://pkgs.tailscale.com/stable/?mode=json')
+    [ "${FAIL_LOOKUP:-}" != feature-tailscale ] || exit 22
+    printf '{\n\t"TarballsVersion": "1.3.0",\n\t"Version": "1.3.0"\n}\n'; exit 0 ;;
+  *moby/moby/releases/latest) key=upstream; repo=moby/moby; tag=docker-v1.3.0 ;;
+  *tailscale/tailscale/releases/latest) key=upstream; repo=tailscale/tailscale; tag=v9.9.9 ;;
   *) exit 22 ;;
 esac
 [ "${FAIL_LOOKUP:-}" != "$key" ] || exit 22
@@ -282,7 +290,8 @@ out="$(PATH="$tmp/latest-bin:$PATH" TOOLS_APT_LISTS="$tmp/apt-lists" bash "$TOOL
 [ "$code" = 1 ] && grep -qx 'apt-tool present 1.2.3 behind 1:1.2.3-2' <<<"$out" \
   && grep -qx 'tmux present 1.2.3 behind 1:1.2.3-2' <<<"$out" \
   && grep -qx 'unzip present 1.2.3 behind 1:1.2.3-2' <<<"$out" \
-  && grep -qx 'docker present 1.2.3 behind 1.3.0' <<<"$out" \
+  && grep -qx 'docker present 1.2.3 behind 1:1.2.3-2' <<<"$out" \
+  && grep -qx 'tailscale present 1.2.3 behind 1.3.0' <<<"$out" \
   && grep -qx 'tools: 13 present, 0 missing, 13 behind, 0 latest unavailable' <<<"$out" \
   && pass "check --latest: every source and special probe reports stale, including an APT revision" || fail "all latest stale: exit $code $out"
 for case in apt:apt-tool nodesource:node-tool npm:npm-tool op:op grok:grok gh-release:actionlint feature-gh:gh feature-sshd:sshd feature-docker:docker feature-tailscale:tailscale; do
@@ -291,6 +300,22 @@ for case in apt:apt-tool nodesource:node-tool npm:npm-tool op:op grok:grok gh-re
   [ "$code" = 3 ] && grep -q "^$expected present .*latest stable unavailable$" <<<"$out" \
     && pass "check --latest: $lookup lookup unavailable is red" || fail "$lookup unavailable: exit $code $out"
 done
+# docker compares the installed CLI package with its APT candidate, not with upstream Moby, which can be ahead of the feed.
+printf 'docker\tdocker\tfeature\tghcr.io/devcontainers/features/docker-outside-of-docker:latest\tlatest\t--version\timage\n' > "$tmp/fx/docker.tsv"
+docker_check() { PATH="$tmp/latest-bin:$PATH" TOOLS_APT_LISTS="$tmp/apt-lists" bash "$TOOLS" --list "$tmp/fx/docker.tsv" check --latest 2>&1; }
+out="$(INSTALLED_DEB_VERSION=29.9.3-ubuntu24.04u1 CANDIDATE_DEB_VERSION=29.9.3-ubuntu24.04u1 docker_check)"; code=$?
+[ "$code" = 0 ] && grep -qx 'docker present 1.2.3' <<<"$out" \
+  && pass "check --latest: docker at its feed's candidate is current, though upstream Moby is newer" || fail "docker current: exit $code $out"
+out="$(INSTALLED_DEB_VERSION=29.9.3-ubuntu24.04u1 CANDIDATE_DEB_VERSION=29.10.0-ubuntu24.04u1 docker_check)"; code=$?
+[ "$code" = 1 ] && grep -qx 'docker present 1.2.3 behind 29.10.0-ubuntu24.04u1' <<<"$out" \
+  && pass "check --latest: docker older than its feed's candidate is behind" || fail "docker behind: exit $code $out"
+out="$(DEB_INSTALLED=docker-ce-cli DOCKER_CE_CANDIDATE=5:29.10.0-1 docker_check)"; code=$?
+[ "$code" = 1 ] && grep -qx 'docker present 1.2.3 behind 5:29.10.0-1' <<<"$out" \
+  && pass "check --latest: docker from docker-ce-cli reads that package's candidate" || fail "docker-ce-cli: exit $code $out"
+out="$(DEB_INSTALLED=none docker_check)"; code=$?
+[ "$code" = 3 ] && grep -qx 'docker present 1.2.3; latest stable unavailable' <<<"$out" \
+  && grep -qx 'tools: 1 present, 0 missing, 0 behind, 1 latest unavailable' <<<"$out" \
+  && pass "check --latest: docker with no CLI package is unverified and exits 3" || fail "docker no package: exit $code $out"
 # apply --sources installer for grok: a stub curl serves the stable pointer and a gzipped binary from the fixture dir.
 mkdir -p "$tmp/grok-bin" "$tmp/grok-dl"
 printf '#!/bin/sh\necho "grok ${GROK_FAKE_VERSION:-1.3.0}"\n' > "$tmp/grok-dl/grok"

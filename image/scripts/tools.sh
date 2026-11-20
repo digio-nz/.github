@@ -152,9 +152,25 @@ grok_latest() {
   [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 3
   printf '%s' "$v"
 }
-# latest_of <tool> <source> <package>: the latest stable version of a row, for check --latest.
+# tailscale_latest: the version of the stable channel that the Tailscale feature downloads from.
+tailscale_latest() {
+  local v
+  v="$(curl -fsSL --max-time 10 'https://pkgs.tailscale.com/stable/?mode=json' 2>/dev/null \
+    | grep -oE '"TarballsVersion"[[:space:]]*:[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+"' | version_in)" || return 3
+  [ -n "$v" ] || return 3
+  printf '%s' "$v"
+}
+# docker_package: the Debian package of the docker CLI. The feature installs moby-cli, or docker-ce-cli with moby: false.
+docker_package() {
+  local p
+  for p in moby-cli docker-ce-cli; do
+    [ "$(dpkg-query -W -f='${Status}' "$p" 2>/dev/null)" = "install ok installed" ] && { printf '%s' "$p"; return 0; }
+  done
+  return 3
+}
+# latest_of <tool> <source> <package>: the newest version that the row's own install channel offers, for check --latest.
 latest_of() {
-  local repo tag
+  local repo tag deb
   case "$2" in
     apt) apt_latest "$3" ;;
     nodesource) apt_latest nodejs ;;
@@ -173,12 +189,11 @@ latest_of() {
       case "$1" in
         gh) repo=cli/cli ;;
         sshd) apt_latest openssh-server; return ;;
-        docker) repo=moby/moby ;;
-        tailscale) repo=tailscale/tailscale ;;
+        docker) deb="$(docker_package)" || return 3; apt_latest "$deb"; return ;;
+        tailscale) tailscale_latest; return ;;
         *) return 3 ;;
       esac
       tag="$(latest_tag "$repo")" || return 3
-      tag="${tag#docker-v}"
       printf '%s' "${tag#v}" ;;
     *) return 3 ;;
   esac
@@ -199,7 +214,12 @@ package_for() {
     apt) printf '%s' "$3" ;;
     nodesource) printf nodejs ;;
     installer) [ "$1" = op ] && printf '%s' "$3" ;;
-    feature) [ "$1" = sshd ] && printf openssh-server ;;
+    feature)
+      case "$1" in
+        sshd) printf openssh-server ;;
+        docker) docker_package ;;
+        *) return 1 ;;
+      esac ;;
     *) return 1 ;;
   esac
 }
