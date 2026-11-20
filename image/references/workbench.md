@@ -1,7 +1,6 @@
 # The workbench
 
 From the workbench image code: where the workbench runs, where a repo goes, and the facts of a Codespace.
-digio-os `workbench.md` held these facts until Plan 73; it is now a pointer to this skill.
 
 The workbench is the dev container that runs the workbench image, and it is the same machine wherever it runs.
 The image is `ghcr.io/digio-nz/workbench`, published for amd64 and arm64.
