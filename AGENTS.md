@@ -29,6 +29,6 @@ This public repo holds the org issue forms, the PR template, the shared workflow
 
 | Read | When |
 | --- | --- |
-| digio-os [`repos/dot-github.md`](https://github.com/digio-nz/digio-os/blob/main/repos/dot-github.md) | Before you change a part that other repos use. |
+| [`README.md`](README.md) | Before you change a part that other repos use. |
 | [`image/README.md`](image/README.md) | Before you change the workbench image, `hooks/` or `lib/`. |
 | [`.github/actions/preview-provision/README.md`](.github/actions/preview-provision/README.md) | Before you change Preview provisioning. |
