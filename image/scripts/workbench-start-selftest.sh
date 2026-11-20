@@ -78,6 +78,16 @@ cat > "$TEST_DIR/bin/op" <<'STUB'
 #!/usr/bin/env bash
 echo "op $*" >> "$CALLS"
 [ -z "${FAIL_op:-}" ] || exit 1
+# op run: the test run `-- true` fails while its count is at most OP_RUN_FAILS; a real run gives the command a value.
+if [ "$1 $2" = "run --env-file" ] && [ -r "$3" ] && [ "$4" = -- ]; then
+  shift 4
+  if [ "$*" = true ]; then
+    n=$(( $(cat "$OP_RUN_COUNT" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$OP_RUN_COUNT"
+    [ "$n" -gt "${OP_RUN_FAILS:-0}" ] || { echo "op: cannot reach 1Password (attempt $n)" >&2; exit 1; }
+    exit 0
+  fi
+  FIXTURE_SECRET=loaded exec "$@"
+fi
 [ "$1 $2 $3" = "inject --force --out-file" ] || exit 2
 sed 's|{{ op://workbench/DIGIO_HISTORY_DATABASE_URL/credential }}|postgres://fixture-history|' > "$4"
 STUB
@@ -88,6 +98,8 @@ done
 touch "$TEST_DIR/skills-template/package.json"
 chmod +x "$TEST_DIR/bin/"* "$TEST_DIR/skills-template/skills/"*/scripts/*.sh
 export PATH="$TEST_DIR/bin:$PATH" CALLS="$TEST_DIR/calls" CLONE_SOURCE="$TEST_DIR/skills-template"
+# A workbench shell inherits these from its own start.
+unset OP_SERVICE_ACCOUNT_TOKEN WORKBENCH_OP_ENV_LOADED
 unset DIGIO_SKILLS_ROOT CLAUDE_CONFIG_DIR CODESPACES CODESPACE_VSCODE_FOLDER DIGIO_HISTORY_DATABASE_URL DIGIO_HISTORY_ENV GIT_IDENTITY GIT_STATUS GIT_BEHIND GIT_GLOBAL_HOOKS
 # The image names its baked hooks in the system gitconfig; a case that wants none passes an empty value.
 export GIT_SYSTEM_HOOKS="$HOOKS/shims"
@@ -411,8 +423,27 @@ cmd_start "$h"
 grep -Fxq "git clone -q https://github.com/digio-nz/.github.git $h/.digio/github" "$CALLS" || fail "workbench-start.sh did not clone digio-nz/.github into a fresh home: $(cat "$CALLS")"
 grep -q '^start: exit [1-9]' "$h/.local/state/digio-workbench/start.log" || fail "workbench-start.sh hid a start-up with no start-up scripts"
 grep -Fxq "command 1" "$h/order" || fail "workbench-start.sh did not start its command when the start-up failed"
+# With a service account, a failed test run of op is retried; after 3 failures the start goes on and leaves the FAIL line.
+op_start() { # <home> <failed test runs>: run workbench-start.sh on a home that cmd_start has set up; waits for its log
+  local h="$1" log="$1/.local/state/digio-workbench/start.log"
+  mkdir -p "$h/.config/digio"; echo fixture-token > "$h/.config/digio/op-workbench"
+  printf 'FIXTURE_SECRET=op://workbench/fixture/credential\n' > "$h/refs.env"
+  : > "$h/order"; rm -f "$h/op-runs" "$log"
+  OP_RUN_FAILS="$2" OP_RUN_COUNT="$h/op-runs" WORKBENCH_OP_ENV="$h/refs.env" WORKBENCH_OP_RETRY_PAUSE=0 HOME="$h" \
+    bash "$DIR/workbench-start.sh" sh -c 'echo "secret ${FIXTURE_SECRET:-none}" >> "$HOME/order"' || return 1
+  for _ in $(seq 50); do grep -q '^start: exit' "$log" 2>/dev/null && return 0; sleep 0.1; done
+  fail "workbench-start.sh wrote no exit line with a service account: $(cat "$log" 2>/dev/null)"
+}
+h="$TEST_DIR/cmd-op"; cmd_start "$h" 0
+op_start "$h" 1
+[ "$(grep "^secret" "$h/order")" = "secret loaded" ] && [ "$(cat "$h/op-runs")" = 2 ] && [ ! -e "$h/.local/state/digio-workbench/op-env.fail" ] \
+  || fail "workbench-start.sh did not load the values after one failed op run: order $(cat "$h/order"), runs $(cat "$h/op-runs")"
+op_start "$h" 3
+[ "$(grep "^secret" "$h/order")" = "secret none" ] && [ "$(cat "$h/op-runs")" = 3 ] || fail "workbench-start.sh did not try op 3 times, then start: order $(cat "$h/order"), runs $(cat "$h/op-runs")"
+grep -Fq "FAIL: workbench: op did not read each reference of $h/refs.env in 3 attempts of 45 seconds each, so T3 and the start scripts have no credential: op: cannot reach 1Password (attempt 3)" \
+  "$h/.local/state/digio-workbench/op-env.fail" || fail "workbench-start.sh did not leave the FAIL line after 3 failed op runs: $(cat "$h/.local/state/digio-workbench/op-env.fail" 2>/dev/null)"
 grep -Fxq 'CMD ["/usr/local/bin/workbench-start.sh"]' "$DIR/../assets/image/Dockerfile" || fail "the image CMD is not workbench-start.sh"
 grep -Fq '"BASH_ENV": "/home/vscode/.digio/node-auth-token.sh"' "$DIR/../../.devcontainer/devcontainer.json" \
   || fail "devcontainer.json BASH_ENV no longer matches workbench-start.sh"
 
-echo "workbench start self-test passed: the image CMD runs the dev container start-up, then T3, the start scripts check the git hooks and remove a stale global hooksPath, post-start sets the hidden-email git identity and warns on drifted briefs, post-create writes the session-export store from 1Password or warns, a rebuild keeps ~/devs and the logins, post-start links ~/devs to the workspace devs folder, keeps Codespace logins on the kept disk, routes Codespace git over HTTPS, links the factory skills, removes what SkillPort left, leaves the HumanLayer daemon stopped and fails loudly"
+echo "workbench start self-test passed: the image CMD runs the dev container start-up, then T3, retries the 1Password load 3 times, the start scripts check the git hooks and remove a stale global hooksPath, post-start sets the hidden-email git identity and warns on drifted briefs, post-create writes the session-export store from 1Password or warns, a rebuild keeps ~/devs and the logins, post-start links ~/devs to the workspace devs folder, keeps Codespace logins on the kept disk, routes Codespace git over HTTPS, links the factory skills, removes what SkillPort left, leaves the HumanLayer daemon stopped and fails loudly"
