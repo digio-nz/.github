@@ -22,14 +22,17 @@ done
 # Prints the state of the daemon, or nothing when no daemon answers.
 backend() { tailscale status --json 2>/dev/null | jq -r '.BackendState // empty' 2>/dev/null || true; }
 
-# A daemon that starts goes through NoState and Starting before it knows if its node is joined.
-settled_backend() {
-  local state=""
-  for _ in $(seq 1 20); do
-    state="$(backend)"
-    case "$state" in "" | NoState | Starting) sleep 0.5 ;; *) break ;; esac
+# A node that a person removed from the tailnet stays in the state Running, and it is not online.
+online() { [ "$(tailscale status --json 2>/dev/null | jq -r '.BackendState == "Running" and .Self.Online' 2>/dev/null)" = true ]; }
+
+# A daemon needs some seconds after its start, and after a join, before its node is online.
+wait_online() {
+  for _ in $(seq 1 "${TAILNET_START_TRIES:-30}"); do
+    case "$(backend)" in NeedsLogin | NeedsMachineAuth | Stopped) return 1 ;; esac
+    if online; then return 0; fi
+    sleep 0.5
   done
-  printf '%s' "$state"
+  return 1
 }
 
 # A dev container tool starts the daemon of the Tailscale feature. A plain container run does not.
@@ -41,14 +44,12 @@ if [ -z "$(backend)" ]; then
   sudo sh -c 'mkdir -p /var/lib/tailscale /var/run/tailscale && setsid "$@" >>/var/log/tailscaled.log 2>&1 </dev/null &' sh \
     tailscaled --statedir=/var/lib/tailscale --socket=/var/run/tailscale/tailscaled.sock "${tun[@]}"
 fi
-state="$(settled_backend)"
-if [ -z "$state" ]; then
-  echo "tailnet join failed: tailscaled did not start; see /var/log/tailscaled.log" >&2
-  exit 1
-fi
-
 # An auth key that has expired fails `tailscale up`, also for a node that is joined. So a joined node gets no key.
-if [ "$state" != Running ]; then
+if ! wait_online; then
+  if [ -z "$(backend)" ]; then
+    echo "tailnet join failed: tailscaled did not start; see /var/log/tailscaled.log" >&2
+    exit 1
+  fi
   key="${TS_AUTH_KEY:-}"
   if [ -z "$key" ] && ! key="$(op read "$KEY_REF")"; then
     echo "tailnet join failed: op did not read $KEY_REF" >&2
@@ -60,6 +61,10 @@ if [ "$state" != Running ]; then
     --auth-key="$key" \
     --hostname="workbench-$(hostname)"; then
     echo "tailnet join failed: tailscale up returned an error" >&2
+    exit 1
+  fi
+  if ! wait_online; then
+    echo "tailnet join failed: the node is not online after tailscale up" >&2
     exit 1
   fi
 fi

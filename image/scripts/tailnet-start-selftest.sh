@@ -55,7 +55,7 @@ fi
 # No state file stands for no daemon.
 if [ "$1" = status ] && [ "$2" = --json ]; then
   [ -s "$BACKEND_STATE" ] || exit 1
-  printf '{"BackendState":"%s","Self":{"DNSName":"workbench-selftest.example.ts.net.","Tags":["tag:sandbox"]}}\n' "$(cat "$BACKEND_STATE")"
+  printf '{"BackendState":"%s","Self":{"Online":%s,"DNSName":"workbench-selftest.example.ts.net.","Tags":["tag:sandbox"]}}\n' "$(cat "$BACKEND_STATE")" "${NODE_ONLINE:-true}"
   exit 0
 fi
 
@@ -110,6 +110,14 @@ grep -Fq "joined node workbench-selftest.example.ts.net. with tags tag:sandbox" 
 joined_output="$(TS_AUTH_KEY=selftest-expired-key bash "$SCRIPT" 2>&1)" || fail "a joined node failed the start: $joined_output"
 [ ! -s "$TAILSCALE_CALLS" ] || fail "a joined node ran tailscale up: $(cat "$TAILSCALE_CALLS")"
 grep -Fq "joined node workbench-selftest.example.ts.net. with tags tag:sandbox" <<< "$joined_output" || fail "a joined node was not reported"
+
+# A node that a person removed from the tailnet: the daemon says Running, and the node is not online. It joins again with the key.
+: > "$TAILSCALE_CALLS"
+if removed_output="$(TS_AUTH_KEY=selftest-auth-key NODE_ONLINE=false TAILNET_START_TRIES=2 bash "$SCRIPT" 2>&1)"; then
+  fail "a node that is not online after the join returned success"
+fi
+grep -Fq -- '--auth-key=selftest-auth-key' "$TAILSCALE_CALLS" || fail "a removed node did not join again: $removed_output"
+grep -Fq "tailnet join failed: the node is not online after tailscale up" <<< "$removed_output" || fail "a node that stays offline was not reported: $removed_output"
 
 # A plain container run: no daemon and no TUN device.
 rm -f "$BACKEND_STATE"
