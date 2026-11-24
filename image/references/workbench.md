@@ -70,7 +70,14 @@ digio-michelin's devcontainer config and the image's `CMD` run them from a digio
   Where `DIGIO_HISTORY_DATABASE_URL` is unset, it writes `DATABASE_URL` to `~/devs/digio-history/.env.local` from `op://workbench/DIGIO_HISTORY_DATABASE_URL/credential`, once, if that file is missing. It prints a `WARN:` line when `op` cannot read the value.
 - A workbench with the file `~/.config/digio/op-workbench` has a 1Password service account. `workbench-start.sh` runs itself once more inside `op run` with `/opt/digio/workbench-op.env`, a file of names and references. The start scripts, T3 and each agent then have each value in their environment, and no value is in a file. `op run` hides a value that a process prints whole. When 3 tries of 45 seconds each fail, T3 starts with no values, and `post-start.sh` ends with a `FAIL: workbench:` line. A shell that T3 did not start reads `GH_TOKEN` and the packages token from the vault through `node-auth-token.sh`. A Codespace has no such file and keeps its own sign-in.
 - `scripts/post-start.sh` runs next, and at each start after that.
-  It joins the tailnet and runs `git-hooks.sh`.
+  It joins the tailnet with `tailnet-start.sh` and runs `git-hooks.sh`.
+
+  The key of the join is `TS_AUTH_KEY`. A workbench with a 1Password service account has no such variable, and reads `op://workbench/TS_AUTH_KEY_WORKBENCH/credential`.
+  With neither, the container stays off the tailnet.
+  The script gives no key to a node that is on the tailnet. So a container that keeps `/var/lib/tailscale` in a volume keeps its node, and needs the key once.
+
+  A plain container run has no Tailscale daemon, so the script starts one. Without `/dev/net/tun`, the daemon uses userspace networking, which serves pages and Tailscale SSH.
+
   If no Git identity is set, it sets `digbycampbell` with `96467498+digbycampbell@users.noreply.github.com`.
   It pulls digio-michelin and clones or pulls `~/.digio/skills`.
 
