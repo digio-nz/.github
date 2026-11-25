@@ -1,5 +1,6 @@
 # shellcheck shell=sh
 # node-auth-token.sh: sets NODE_AUTH_TOKEN, the token npm sends to GitHub Packages (npm.pkg.github.com), when it is unset.
+# It also sets NIX_CONFIG, when it is unset, so that nix sends GH_TOKEN to GitHub.
 # Sourced, never run, by every shell: POSIX sh, quiet, and it writes no file. npm-auth.sh writes the npmrc lines that read it.
 #   a NODE_AUTH_TOKEN already set wins;
 #   in a Codespace (CODESPACES), the Codespace's GITHUB_TOKEN;
@@ -28,3 +29,6 @@ if [ -z "${GH_TOKEN:-}" ] && [ -z "${CODESPACES:-}" ] && [ -r "$HOME/.config/dig
   GH_TOKEN="$(OP_SERVICE_ACCOUNT_TOKEN="$(tr -d '[:space:]' < "$HOME/.config/digio/op-workbench")" env -u BASH_ENV op read op://workbench/GH_TOKEN/credential 2>/dev/null)" || GH_TOKEN=""
   if [ -n "${GH_TOKEN:-}" ]; then export GH_TOKEN; else unset GH_TOKEN; fi
 fi
+
+# nix reads a private input of a flake from GitHub with this token.
+if [ -z "${NIX_CONFIG:-}" ] && [ -n "${GH_TOKEN:-}" ]; then export NIX_CONFIG="access-tokens = github.com=$GH_TOKEN"; fi

@@ -56,6 +56,11 @@ grep -q '"TOOLS_REFRESH": "${localEnv:TOOLS_REFRESH}"' "$MICHELIN/image/assets/i
   && grep -q '^ && echo "$sum  /usr/local/bin/skills-manager-cli" | sha256sum -c - \\$' "$dockerfile" \
   && pass "the image installs skills-manager-cli with a pinned checksum for each architecture" \
   || fail "the skills-manager-cli install has no pinned checksum for each architecture"
+[ "$(grep -cE '^ +(amd64|arm64)\) system=(x86_64|aarch64)-linux sum=[0-9a-f]{64} ;; \\$' "$dockerfile")" = 2 ] \
+  && grep -q '^ && echo "$sum  /opt/digio/nix/nix.tar.xz" | sha256sum -c - \\$' "$dockerfile" \
+  && [ "$(grep -A1 -x 'USER ${USERNAME}' "$dockerfile" | tail -n 1)" = 'RUN nix-setup.sh' ] \
+  && pass "the image installs nix as its user from a release with a pinned checksum for each architecture" \
+  || fail "the nix install has no pinned checksum for each architecture, or the user does not install it"
 grep -q 'cp -a hooks image/.build/michelin-hooks' "$MICHELIN/.github/workflows/build-image.yml" \
   && grep -q '^COPY .build/michelin-hooks/ /opt/digio/michelin-hooks/$' "$dockerfile" \
   && grep -q 'git config --system core.hooksPath /opt/digio/michelin-hooks/shims' "$dockerfile" \
@@ -132,6 +137,16 @@ printf 'RUN %s\n' "$cli_download" >> "$tmp/fx/Dockerfile"
 out="$(lint "$tmp/fx/good.tsv")"; code=$?
 [ "$code" = 1 ] && grep -q "Dockerfile:7: installs a tool outside tools.sh: curl -fsSL -o /usr/local/bin/skills-manager-cli .* with no sha256sum -c$" <<<"$out" \
   && pass "a skills-manager-cli download with no checksum is red" || fail "skills-manager-cli with no checksum: exit $code $out"
+cp "$tmp/fx/Dockerfile.good" "$tmp/fx/Dockerfile"
+nix_download='curl -fsSL -o /opt/digio/nix/nix.tar.xz "https://releases.nixos.org/nix/nix-2.36.0/nix-2.36.0-$system.tar.xz"'
+printf 'RUN %s && echo "$sum  /opt/digio/nix/nix.tar.xz" | sha256sum -c -\n' "$nix_download" >> "$tmp/fx/Dockerfile"
+out="$(lint "$tmp/fx/good.tsv")"; code=$?
+[ "$code" = 0 ] && pass "the nix download with a checksum is allowed" || fail "nix download: exit $code $out"
+cp "$tmp/fx/Dockerfile.good" "$tmp/fx/Dockerfile"
+printf 'RUN %s\n' "$nix_download" >> "$tmp/fx/Dockerfile"
+out="$(lint "$tmp/fx/good.tsv")"; code=$?
+[ "$code" = 1 ] && grep -q "Dockerfile:7: installs a tool outside tools.sh: curl -fsSL -o /opt/digio/nix/nix.tar.xz .* with no sha256sum -c$" <<<"$out" \
+  && pass "a nix download with no checksum is red" || fail "nix with no checksum: exit $code $out"
 cp "$tmp/fx/Dockerfile.good" "$tmp/fx/Dockerfile"
 printf 'RUN curl -fsSL -o /usr/local/bin/other "https://github.com/xingkongliang/skills-manager/releases/download/v1.44.0/other"\n' >> "$tmp/fx/Dockerfile"
 out="$(lint "$tmp/fx/good.tsv")"; code=$?
@@ -701,7 +716,7 @@ bash "$CLI" layers >/dev/null 2>&1; [ $? = 2 ] && pass "layers without --tag exi
 
 # --- the start scripts ---------------------------------------------------------------------------------------------------
 
-for t in tailnet-start-selftest.sh session-export-sweep-selftest.sh humanlayer-daemon-selftest.sh git-hooks-selftest.sh workbench-start-selftest.sh; do
+for t in nix-setup-selftest.sh tailnet-start-selftest.sh session-export-sweep-selftest.sh humanlayer-daemon-selftest.sh git-hooks-selftest.sh workbench-start-selftest.sh; do
   out="$(bash "$DIR/$t" 2>&1)" && pass "$t" || fail "$t: $out"
 done
 

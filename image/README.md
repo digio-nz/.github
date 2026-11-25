@@ -19,3 +19,10 @@ The git hooks are the image's own copy of `hooks/`; `image/scripts/git-hooks.sh`
 The image holds [skills-manager-cli](https://github.com/xingkongliang/skills-manager) in `/usr/local/bin`.
 The Dockerfile pins its version and the checksum of the release asset for each architecture.
 `post-start.sh` uses it to link the skills of the `factory` preset into `~/.claude/skills` and `~/.codex/skills`.
+
+The image holds a single-user [nix](https://nix.dev/manual/nix/latest/), so an agent can check a flake before a commit.
+The Dockerfile pins its release and the checksum of the tarball for each architecture, and the tarball stays in the image.
+`nix-setup.sh` installs it into `/nix` for the user at the build.
+`workbench-start.sh` runs the script again at each start, because a volume at `/nix` can be empty or can hold the nix of an older image.
+A host that mounts a volume at `/nix` keeps the store across a restart. With no volume, a restart empties the store.
+`node-auth-token.sh` gives nix the `GH_TOKEN`, which a private input of a flake needs.

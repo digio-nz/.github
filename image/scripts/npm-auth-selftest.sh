@@ -125,6 +125,10 @@ done
 # On a machine, a GH_TOKEN in the environment (a Hermes job) wins over the gh login.
 got="$(env -i HOME="$TEST_DIR" PATH="$PATH" GH_TOKEN=from-gh-token sh -c ". '$DIR/node-auth-token.sh'; printf %s \"\${NODE_AUTH_TOKEN:-}\"")"
 [ "$got" = from-gh-token ] || fail "node-auth-token.sh did not take NODE_AUTH_TOKEN from GH_TOKEN: '$got'"
+got="$(env -i HOME="$TEST_DIR" PATH="$PATH" GH_TOKEN=from-gh-token sh -c ". '$DIR/node-auth-token.sh'; printf %s \"\${NIX_CONFIG:-}\"")"
+[ "$got" = "access-tokens = github.com=from-gh-token" ] || fail "node-auth-token.sh did not give nix the GH_TOKEN: '$got'"
+got="$(env -i HOME="$TEST_DIR" PATH="$PATH" GH_TOKEN=from-gh-token NIX_CONFIG=mine sh -c ". '$DIR/node-auth-token.sh'; printf %s \"\$NIX_CONFIG\"")"
+[ "$got" = mine ] || fail "node-auth-token.sh replaced a NIX_CONFIG that was set: '$got'"
 # With no token anywhere and no gh, the variable stays unset, not empty.
 mkdir -p "$TEST_DIR/nogh"
 ln -sf "$(command -v env)" "$TEST_DIR/nogh/env"

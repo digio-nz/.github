@@ -716,7 +716,7 @@ instructions() {
 }
 
 # dockerfile_faults <Dockerfile>: each RUN that installs a tool outside tools.sh. The Dockerfile may apt-get install the
-# BASE_PACKAGES only, run tools.sh apply, download skills-manager-cli with a checksum, and download the Playwright browser.
+# BASE_PACKAGES only, run tools.sh apply, download skills-manager-cli and nix with a checksum, and download the Playwright browser.
 dockerfile_faults() {
   local file="$1" n text cmd pkgs p bad
   while IFS=$'\t' read -r n text; do
@@ -729,6 +729,8 @@ dockerfile_faults() {
         *"tools.sh apply"*) ;;
         "playwright install"*) ;;
         'curl -fsSL -o /usr/local/bin/skills-manager-cli "https://github.com/xingkongliang/skills-manager/releases/download/v'*)
+          case "$text" in *"sha256sum -c"*) ;; *) bad="$bad $cmd with no sha256sum -c;" ;; esac ;;
+        'curl -fsSL -o /opt/digio/nix/nix.tar.xz "https://releases.nixos.org/nix/nix-'*)
           case "$text" in *"sha256sum -c"*) ;; *) bad="$bad $cmd with no sha256sum -c;" ;; esac ;;
         *"apt-get install"* | *"apt install"*)
           pkgs="$(printf '%s' "$cmd" | sed 's/.*install//')"
