@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs at every container start: join the tailnet, check the git hooks, and refresh Michelin, skills and briefs.
+# Runs at every container start: join the tailnet, set up nix, check the git hooks, and refresh Michelin, skills and briefs.
 # A failed hooks check or required Michelin step is reported on stderr, and the script exits 1 after running every step.
 # A tailnet failure is reported but does not fail the start.
 set -uo pipefail
@@ -9,6 +9,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! bash "$SCRIPT_DIR/tailnet-start.sh"; then
   # A tailnet failure must be visible, but it must not prevent the dev container from starting.
   echo "tailnet: setup failed; container startup will continue" >&2
+fi
+
+# A volume at /nix can be empty or can hold an older nix, and a dev container tool can give the user another uid than the owner of /nix.
+if command -v nix-setup.sh >/dev/null; then
+  nix-setup.sh || failed=1
+else
+  echo "nix: this image has no nix-setup.sh, so it has no nix"
 fi
 
 # A rebuild keeps only /workspaces, so ~/devs links to /workspaces/devs: repos keep the machines' ~/devs paths and survive it.
