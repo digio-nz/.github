@@ -66,6 +66,39 @@ probe="$(mktemp -d)"
 rm -rf "$probe"
 echo "hooks: system hooksPath guards pushes (clean passes, credential BLOCKED)"
 
+node_major="$(cat "$DIR/../references/node-major")"
+[ "$(node --version | sed -E 's/^v([0-9]+)\..*$/\1/')" = "$node_major" ] \
+  || fail "node is $(node --version), and image/references/node-major declares Node $node_major"
+
+python3 -I -c 'import yaml' || fail "the system python3 has no PyYAML"
+
+# A product that pins another Playwright adds its browser build to this folder with npx playwright install.
+browsers="${PLAYWRIGHT_BROWSERS_PATH:-}"
+{ [ -d "$browsers" ] && [ -w "$browsers" ] && [ -z "$(find "$browsers" ! -writable -print -quit)" ]; } \
+  || fail "$(id -un) cannot write each file of PLAYWRIGHT_BROWSERS_PATH '${browsers}', so a product cannot add its browser build"
+node -e 'require(process.argv[1]).chromium.launch().then((b) => b.close())' "$(dirname "$(readlink -f "$(command -v playwright)")")" \
+  || fail "the image's playwright cannot launch its chromium from $browsers"
+echo "playwright: $(id -un) can write $browsers, and the image's chromium launches"
+
+# The Postgres of the tools.tsv row: the user makes, starts and queries a cluster of their own, as a product does.
+pg_package="$(/opt/digio/tools/tools.sh list | awk -F'\t' '$1 == "postgresql" { print $4 }')"
+pg_major="${pg_package#postgresql-}"
+pg_bin="/usr/lib/postgresql/$pg_major/bin"
+{ [ -n "$pg_package" ] && [ -x "$pg_bin/initdb" ] && [ -x "$pg_bin/pg_ctl" ] && [ -x "$pg_bin/postgres" ]; } \
+  || fail "the image has no Postgres server ${pg_major:-(no postgresql row)} in $pg_bin"
+[ -z "$(pg_lsclusters -h)" ] || fail "the image holds a Postgres cluster: $(pg_lsclusters -h)"
+pg="$(mktemp -d)"
+pg_version="$(
+  set -e
+  "$pg_bin/initdb" -D "$pg/data" -U postgres --auth=trust >/dev/null
+  "$pg_bin/pg_ctl" -D "$pg/data" -l "$pg/log" -o "-c listen_addresses='' -k $pg" -w start >/dev/null
+  trap '"$pg_bin/pg_ctl" -D "$pg/data" -m fast -w stop >/dev/null' EXIT
+  psql -h "$pg" -U postgres -d postgres -tAc 'SHOW server_version_num'
+)" || { cat "$pg/log" >&2 2>/dev/null; rm -rf "$pg"; fail "$(id -un) cannot make, start and query a Postgres $pg_major cluster"; }
+rm -rf "$pg"
+[ "${pg_version:0:${#pg_major}}" = "$pg_major" ] || fail "the Postgres server is $pg_version, not major $pg_major"
+echo "postgresql: $(id -un) ran a Postgres $pg_version cluster, and the image holds none"
+
 export DIGIO_SKILLS_ROOT="${DIGIO_SKILLS_ROOT:-$HOME/.digio/skills}"
 TEST_HOME="$(mktemp -d)"
 export HOME="$TEST_HOME"
@@ -92,4 +125,4 @@ bash "$DIR/npm-auth-selftest.sh"
 # The start scripts' hooks check, on the image's own system gitconfig and a home with no global one.
 bash "$DIR/git-hooks.sh" || fail "git-hooks.sh does not accept the image's baked hooksPath"
 
-echo "image self-test passed: tools, skills, git hooks and worker setup"
+echo "image self-test passed: tools, Node major, PyYAML, Playwright, Postgres, skills, git hooks and worker setup"

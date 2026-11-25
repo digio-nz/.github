@@ -28,6 +28,7 @@ lavish-axi	lavish-axi	npm	lavish-axi	latest	--version	all
 quota-axi	quota-axi	npm	quota-axi	latest	--version	all
 tasks-axi	tasks-axi	npm	tasks-axi	latest	--version	all
 op	op	installer	1password-cli	latest	--version	image
+postgresql	psql	installer	postgresql-18	latest	--version	image
 grok	grok	installer	https://x.ai/cli	latest	--version	all
 no-mistakes	no-mistakes	installer	https://raw.githubusercontent.com/kunchenguid/no-mistakes/main/docs/install.sh	latest	--version	image
 actionlint	actionlint	gh-release	rhysd/actionlint	latest	--version	all

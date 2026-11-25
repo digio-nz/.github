@@ -8,7 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # The base packages that no person runs; tools.sh holds this list as BASE_PACKAGES, and tools.sh lint holds this line to it.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates build-essential gnupg python3-pip python3-venv \
+ && apt-get install -y --no-install-recommends ca-certificates build-essential gnupg python3-pip python3-venv python3-yaml \
  && rm -rf /var/lib/apt/lists/*
 
 # skills-manager-cli links the skills of a preset into each agent's skills folder. tools.tsv takes only latest, and this
@@ -54,9 +54,11 @@ RUN /opt/digio/tools/tools.sh apply --prefix /usr/local --sources npm \
  && npm cache clean --force
 RUN /opt/digio/tools/tools.sh apply --prefix /usr/local --sources installer,gh-release
 
-# The browser lives in the image so container create does no download. Shared path, readable by the user.
+# The browser of the image's playwright lives in the image, so container create does no download. A product that pins
+# another Playwright adds its own build here with npx playwright install, so the user owns the folder.
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 RUN playwright install --with-deps chromium \
+ && chown -R ${USERNAME}:${USERNAME} /opt/playwright \
  && chmod -R a+rX /opt/playwright \
  && rm -rf /var/lib/apt/lists/*
 

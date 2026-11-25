@@ -13,7 +13,7 @@
 # ../references/tools.tsv. --scope image is every row, the default; --scope all is the rows that the machines install
 # too, and a machine applies only those.
 # apply installs the sources in this order: apt, nodesource, npm, installer, gh-release. It never installs a feature row:
-# the devcontainer CLI installs the features from the image's devcontainer.json. apt, nodesource and op need root.
+# the devcontainer CLI installs the features from the image's devcontainer.json. apt, nodesource, op and postgresql need root.
 # lint reads TOOLS_DOCKERFILE and TOOLS_DEVCONTAINER; the defaults are the image's Dockerfile and devcontainer.json.
 # version-lt and latest-release are the version helpers that dotfiles' bootstrap/status-output.sh calls for the
 # machine-only tools, so the image and the machines compare versions one way.
@@ -25,7 +25,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
 # The packages that the Dockerfile installs itself, before tools.sh: no person runs them, so they are not tools.
-BASE_PACKAGES="ca-certificates build-essential gnupg python3-pip python3-venv"
+BASE_PACKAGES="ca-certificates build-essential gnupg python3-pip python3-venv python3-yaml"
 SOURCES="apt nodesource npm installer gh-release feature"
 INSTALL_ORDER="apt nodesource npm installer gh-release"
 
@@ -176,7 +176,7 @@ latest_of() {
     nodesource) apt_latest nodejs ;;
     npm) npm view "$3" version 2>/dev/null || return 3 ;;
     installer)
-      if [ "$1" = op ]; then apt_latest "$3"; return; fi
+      if [ "$1" = op ] || [ "$1" = postgresql ]; then apt_latest "$3"; return; fi
       if [ "$1" = grok ]; then grok_latest "$3"; return; fi
       repo="$(github_repo "$3")" || return 3
       tag="$(latest_tag "$repo")" || return 3
@@ -203,7 +203,7 @@ has_latest_lookup() {
   case "$2" in
     apt | nodesource | npm) return 0 ;;
     gh-release) github_repo "$3" >/dev/null ;;
-    installer) [ "$1" = op ] || [ "$1" = grok ] || github_repo "$3" >/dev/null ;;
+    installer) [ "$1" = op ] || [ "$1" = postgresql ] || [ "$1" = grok ] || github_repo "$3" >/dev/null ;;
     feature) case "$1" in gh | sshd | docker | tailscale) return 0 ;; *) return 1 ;; esac ;;
     *) return 1 ;;
   esac
@@ -213,7 +213,7 @@ package_for() {
   case "$2" in
     apt) printf '%s' "$3" ;;
     nodesource) printf nodejs ;;
-    installer) [ "$1" = op ] && printf '%s' "$3" ;;
+    installer) { [ "$1" = op ] || [ "$1" = postgresql ]; } && printf '%s' "$3" ;;
     feature)
       case "$1" in
         sshd) printf openssh-server ;;
@@ -517,6 +517,44 @@ install_op() {
   fi
   rm -f "$key" "$policy"; rm -rf /var/lib/apt/lists/*
   echo "installed op $(op --version 2>/dev/null | version_in)"
+}
+
+# The fingerprint of the PGDG repository's signing key, from https://www.postgresql.org/download/linux/ubuntu/.
+PGDG_KEY_FINGERPRINT=B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8
+
+# Ubuntu ships an older Postgres major than Neon runs, so the server and its client come from the PGDG repository. The
+# image holds no cluster: a product makes its own with initdb.
+install_postgresql() {
+  local version="$1" package="$2" key fingerprint codename
+  [ "$version" = latest ] || { echo "postgresql: the PGDG repository takes only the latest release, not $version" >&2; return 1; }
+  case "$package" in postgresql-[0-9]*) ;; *) echo "postgresql: unknown package: $package" >&2; return 1 ;; esac
+  if [ "$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null)" = "install ok installed" ]; then
+    echo "postgresql current $(dpkg-query -W -f='${Version}' "$package")"; return 0
+  fi
+  need_root postgresql "$package" || return 1
+  # shellcheck source=/dev/null
+  codename="$(. /etc/os-release && printf '%s' "${VERSION_CODENAME:-}")"
+  [ -n "$codename" ] || { echo "postgresql: /etc/os-release names no VERSION_CODENAME" >&2; return 1; }
+  key="$(mktemp)"
+  if ! curl -fsSL -o "$key" https://www.postgresql.org/media/keys/ACCC4CF8.asc; then
+    rm -f "$key"; echo "postgresql: cannot download the PGDG signing key" >&2; return 3
+  fi
+  fingerprint="$(gpg --batch --show-keys --with-colons "$key" 2>/dev/null | awk -F: '$1 == "fpr" { print $10 }' | paste -sd' ' -)"
+  if [ "$fingerprint" != "$PGDG_KEY_FINGERPRINT" ]; then
+    rm -f "$key"; echo "postgresql: the downloaded key has the fingerprint '${fingerprint:-none}', not $PGDG_KEY_FINGERPRINT" >&2; return 1
+  fi
+  # postgresql-common writes createcluster.conf, and the server package reads it, so the setting goes between them.
+  if ! gpg --batch --yes --dearmor --output /usr/share/keyrings/pgdg-archive-keyring.gpg "$key" \
+    || ! printf 'deb [signed-by=/usr/share/keyrings/pgdg-archive-keyring.gpg] https://apt.postgresql.org/pub/repos/apt %s-pgdg main\n' "$codename" > /etc/apt/sources.list.d/pgdg.list \
+    || ! DEBIAN_FRONTEND=noninteractive apt-get update -qq \
+    || ! DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends postgresql-common >/dev/null \
+    || ! sed -i 's/^#*[[:space:]]*create_main_cluster[[:space:]]*=.*/create_main_cluster = false/' /etc/postgresql-common/createcluster.conf \
+    || ! grep -qx 'create_main_cluster = false' /etc/postgresql-common/createcluster.conf \
+    || ! DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends "$package" >/dev/null; then
+    rm -f "$key"; rm -rf /var/lib/apt/lists/*; echo "install failed: postgresql $package" >&2; return 1
+  fi
+  rm -f "$key"; rm -rf /var/lib/apt/lists/*
+  echo "installed postgresql $(dpkg-query -W -f='${Version}' "$package")"
 }
 
 sha256_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }

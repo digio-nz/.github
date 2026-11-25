@@ -230,7 +230,7 @@ esac
 [ "${PROBE_FAIL:-}" != "$name" ] || exit 9
 echo "$name 1.2.3"
 SH
-for c in apt-tool ffmpeg tmux unzip node-tool npm-tool op grok actionlint gh sshd docker tailscale; do
+for c in apt-tool ffmpeg tmux unzip node-tool npm-tool op psql grok actionlint gh sshd docker tailscale; do
   ln -s tool-version "$tmp/latest-bin/$c"
 done
 cat > "$tmp/latest-bin/npm" <<'SH'
@@ -244,7 +244,7 @@ cat > "$tmp/latest-bin/apt-cache" <<'SH'
 [ "$1" = policy ] || exit 9
 package="$2"
 case "${FAIL_LOOKUP:-}:$package" in
-  apt:apt-pkg | op:1password-cli | feature-sshd:openssh-server | feature-docker:moby-cli) candidate='(none)' ;;
+  apt:apt-pkg | op:1password-cli | postgresql:postgresql-18 | feature-sshd:openssh-server | feature-docker:moby-cli) candidate='(none)' ;;
   nodesource:nodejs) candidate='(none)' ;;
   *:docker-ce-cli) candidate="${DOCKER_CE_CANDIDATE:-(none)}" ;;
   *) candidate="${CANDIDATE_DEB_VERSION:-1:1.2.3-2}" ;;
@@ -294,6 +294,7 @@ unzip${T}unzip${T}apt${T}unzip-pkg${T}latest${T}-v${T}all
 node-tool${T}node-tool${T}nodesource${T}current.x${T}latest${T}--version${T}all
 npm-tool${T}npm-tool${T}npm${T}npm-tool-pkg${T}latest${T}--version${T}all
 op${T}op${T}installer${T}1password-cli${T}latest${T}--version${T}all
+postgresql${T}psql${T}installer${T}postgresql-18${T}latest${T}--version${T}all
 grok${T}grok${T}installer${T}https://grok.example/cli${T}latest${T}--version${T}all
 actionlint${T}actionlint${T}gh-release${T}rhysd/actionlint${T}latest${T}--version${T}all
 gh${T}gh${T}feature${T}ghcr.io/devcontainers/features/github-cli:latest${T}latest${T}--version${T}all
@@ -307,9 +308,10 @@ out="$(PATH="$tmp/latest-bin:$PATH" TOOLS_APT_LISTS="$tmp/apt-lists" bash "$TOOL
   && grep -qx 'unzip present 1.2.3 behind 1:1.2.3-2' <<<"$out" \
   && grep -qx 'docker present 1.2.3 behind 1:1.2.3-2' <<<"$out" \
   && grep -qx 'tailscale present 1.2.3 behind 1.3.0' <<<"$out" \
-  && grep -qx 'tools: 13 present, 0 missing, 13 behind, 0 latest unavailable' <<<"$out" \
+  && grep -qx 'postgresql present 1.2.3 behind 1:1.2.3-2' <<<"$out" \
+  && grep -qx 'tools: 14 present, 0 missing, 14 behind, 0 latest unavailable' <<<"$out" \
   && pass "check --latest: every source and special probe reports stale, including an APT revision" || fail "all latest stale: exit $code $out"
-for case in apt:apt-tool nodesource:node-tool npm:npm-tool op:op grok:grok gh-release:actionlint feature-gh:gh feature-sshd:sshd feature-docker:docker feature-tailscale:tailscale; do
+for case in apt:apt-tool nodesource:node-tool npm:npm-tool op:op postgresql:postgresql grok:grok gh-release:actionlint feature-gh:gh feature-sshd:sshd feature-docker:docker feature-tailscale:tailscale; do
   lookup="${case%%:*}"; expected="${case#*:}"
   out="$(PATH="$tmp/latest-bin:$PATH" TOOLS_APT_LISTS="$tmp/apt-lists" FAIL_LOOKUP="$lookup" bash "$TOOLS" --list "$tmp/fx/all-latest.tsv" check --latest 2>&1)"; code=$?
   [ "$code" = 3 ] && grep -q "^$expected present .*latest stable unavailable$" <<<"$out" \
@@ -358,6 +360,78 @@ out="$(GROK_FAKE_VERSION=9.9.9 grok_apply "$tmp/grok-wrong")"; code=$?
 out="$(FAIL_STABLE=1 grok_apply "$tmp/grok-none")"; code=$?
 [ "$code" = 3 ] && grep -q 'grok: cannot read https://grok.example/cli/stable' <<<"$out" \
   && pass "install_grok exits 3 when the stable channel cannot be read" || fail "grok stable unreadable: exit $code $out"
+
+# apply --sources installer for postgresql, as root: a stub curl serves the key, and a stub gpg names its fingerprint.
+# Each case stops before the first write to the system, and a stub apt-get records any call.
+mkdir -p "$tmp/pg-bin"
+cat > "$tmp/pg-bin/id" <<'SH'
+#!/bin/sh
+[ "$1" = -u ] && { echo 0; exit 0; }
+exec /usr/bin/id "$@"
+SH
+cat > "$tmp/pg-bin/curl" <<'SH'
+#!/bin/bash
+out=""; while [ $# -gt 1 ]; do [ "$1" = -o ] && out="$2"; shift; done
+[ "$1" = https://www.postgresql.org/media/keys/ACCC4CF8.asc ] && [ -z "${FAIL_KEY:-}" ] || exit 22
+echo key > "$out"
+SH
+cat > "$tmp/pg-bin/gpg" <<'SH'
+#!/bin/sh
+case "$*" in *--show-keys*) printf 'pub:-:4096:1:x:1:::-:::scSC::::::23::0:\nfpr:::::::::%s:\n' "$KEY_FINGERPRINT" ;; *) echo "gpg $*" >> "$PG_CALLS"; exit 99 ;; esac
+SH
+cat > "$tmp/pg-bin/apt-get" <<'SH'
+#!/bin/sh
+echo "apt-get $*" >> "$PG_CALLS"; exit 99
+SH
+cat > "$tmp/pg-bin/dpkg-query" <<'SH'
+#!/bin/sh
+case "$*" in
+  *'${Status}'*) [ -n "${PG_INSTALLED:-}" ] && echo 'install ok installed' || echo 'unknown ok not-installed' ;;
+  *) echo 18.7-1.pgdg24.04+5 ;;
+esac
+SH
+chmod +x "$tmp/pg-bin/"*
+printf '# tool\tcommand\tsource\tpackage\tversion\tprobe\tscope\npostgresql\tpsql\tinstaller\tpostgresql-18\tlatest\t--version\timage\n' > "$tmp/fx/postgresql.tsv"
+pg_apply() { : > "$tmp/pg-calls"; PATH="$tmp/pg-bin:$PATH" PG_CALLS="$tmp/pg-calls" bash "$TOOLS" --list "$tmp/fx/postgresql.tsv" apply --prefix "$tmp/pg-prefix" --sources installer 2>&1; }
+pgdg=B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8
+out="$(PG_INSTALLED=1 pg_apply)"; code=$?
+[ "$code" = 0 ] && grep -qx 'postgresql current 18.7-1.pgdg24.04+5' <<<"$out" && [ ! -s "$tmp/pg-calls" ] \
+  && pass "install_postgresql keeps an installed server" || fail "postgresql current: exit $code $out"
+out="$(KEY_FINGERPRINT=0000000000000000000000000000000000000000 pg_apply)"; code=$?
+[ "$code" = 1 ] && grep -q "postgresql: the downloaded key has the fingerprint '0000000000000000000000000000000000000000', not $pgdg" <<<"$out" \
+  && [ ! -s "$tmp/pg-calls" ] \
+  && pass "install_postgresql refuses a key with another fingerprint, and adds no repository" || fail "postgresql wrong key: exit $code $out $(cat "$tmp/pg-calls")"
+out="$(KEY_FINGERPRINT="$pgdg 1111111111111111111111111111111111111111" pg_apply)"; code=$?
+[ "$code" = 1 ] && grep -q "postgresql: the downloaded key has the fingerprint '$pgdg 1111111111111111111111111111111111111111'" <<<"$out" \
+  && [ ! -s "$tmp/pg-calls" ] \
+  && pass "install_postgresql refuses a key file that holds a second key" || fail "postgresql two keys: exit $code $out"
+out="$(FAIL_KEY=1 pg_apply)"; code=$?
+[ "$code" = 3 ] && grep -q 'postgresql: cannot download the PGDG signing key' <<<"$out" && [ ! -s "$tmp/pg-calls" ] \
+  && pass "install_postgresql exits 3 when the key cannot be downloaded" || fail "postgresql no key: exit $code $out"
+rm "$tmp/pg-bin/id"
+out="$(pg_apply)"; code=$?
+[ "$code" = 1 ] && grep -q 'postgresql: needs root to install postgresql-18' <<<"$out" \
+  && pass "install_postgresql needs root" || fail "postgresql not root: exit $code $out"
+if grep -qF "PGDG_KEY_FINGERPRINT=$pgdg" "$TOOLS" \
+  && grep -qF 'signed-by=/usr/share/keyrings/pgdg-archive-keyring.gpg] https://apt.postgresql.org/pub/repos/apt %s-pgdg main' "$TOOLS" \
+  && grep -qF "grep -qx 'create_main_cluster = false' /etc/postgresql-common/createcluster.conf" "$TOOLS"; then
+  pass "install_postgresql adds the PGDG repository with the pinned key fingerprint, and makes no cluster"
+else
+  fail "install_postgresql lacks the pinned PGDG key fingerprint, the signed repository or create_main_cluster = false"
+fi
+if grep -qF '"$pg_bin/initdb" -D' "$DIR/image-selftest.sh" && grep -qF 'pg_lsclusters -h' "$DIR/image-selftest.sh" \
+  && grep -qF "python3 -I -c 'import yaml'" "$DIR/image-selftest.sh"; then
+  pass "the image self-test runs a Postgres cluster as the user, finds no image cluster, and imports PyYAML"
+else
+  fail "the image self-test does not run a Postgres cluster, check for an image cluster, or import PyYAML"
+fi
+grep -q '^ && chown -R ${USERNAME}:${USERNAME} /opt/playwright \\$' "$dockerfile" \
+  && grep -qF 'find "$browsers" ! -writable' "$DIR/image-selftest.sh" \
+  && pass "the user owns the Playwright browsers folder, so a product adds its own build, and the image self-test checks it" \
+  || fail "the user does not own /opt/playwright, or the image self-test does not check it"
+grep -qxE '[0-9]+' "$DIR/../references/node-major" && grep -qF 'references/node-major' "$DIR/image-selftest.sh" \
+  && pass "image/references/node-major is one Node major, and the image self-test compares node --version with it" \
+  || fail "image/references/node-major is not one Node major, or the image self-test does not read it"
 
 # A changed upstream installer cannot start a daemon during the image build.
 mkdir -p "$tmp/no-mistakes-bin"

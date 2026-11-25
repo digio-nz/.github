@@ -10,6 +10,21 @@ That channel is the APT candidate of a Debian package, the npm registry, or the 
 A tool that is older than its channel fails the check, because a new build fixes it.
 An upstream release that the channel does not have yet does not fail the check.
 
+PyYAML (`python3-yaml`) is a base package of the Dockerfile, not a row, because it is a library with no command to probe.
+
+The `postgresql` row installs the Postgres server and client from the PGDG apt repository, because Ubuntu 24.04 ships an older major than Neon runs.
+`tools.sh` compares the fingerprint of the signing key with its pinned fingerprint before it adds the repository.
+The image holds no cluster. A product makes its own cluster with `initdb`, in a folder that the user owns.
+
+`image/references/node-major` is the Node major that the products declare in `.nvmrc`.
+The image self-test fails when `node --version` shows a different major.
+When the products move to a new major, change the file.
+
+`PLAYWRIGHT_BROWSERS_PATH` is `/opt/playwright`, which holds the Chromium build of the image's `playwright`.
+The user owns the folder.
+A product that pins a different Playwright version needs a different build.
+To add that build, run `npx playwright install chromium` in the product.
+
 The devcontainer commands run `image/scripts/post-create.sh` and `image/scripts/post-start.sh`.
 Outside a Codespace on this repository, they run from a checkout of it at `~/.digio/github`, which each start pulls.
 They use Michelin at `~/.digio/michelin` (`DIGIO_MICHELIN_ROOT`) and the installed digio-skills clone at `~/.digio/skills`.
