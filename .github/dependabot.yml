@@ -1,0 +1,52 @@
+# Dependency drift, on a schedule, so patching a transitive CVE stops being
+# something somebody has to remember.
+#
+# THE DESIGN CONSTRAINT HERE IS NOISE, NOT COVERAGE. An ungrouped Dependabot
+# opens roughly one PR per outdated package per week, and every one of them
+# costs a full CI run — which in the fleet's larger repos is minutes of Check
+# and tens of minutes of E2E. So the policy below is deliberately
+# conservative:
+#
+#   · WEEKLY, on Monday NZ morning, not daily — a dependency triage is a
+#     session, not an interrupt. The `open-pull-requests-limit` caps the blast
+#     radius even if a grouping rule is wrong.
+#   · GROUPED — the point of a group is that ONE PR carries many bumps, so one
+#     CI run answers for all of them. minor+patch are grouped per ecosystem
+#     because they are the ones that are almost always safe together; MAJORS
+#     are deliberately left UNGROUPED, one PR each, because a major is a
+#     reading task and burying five of them in one diff is how one gets merged
+#     unread.
+#   · `github-actions` matters as much as `npm`. A `uses:` on a major tag
+#     (`actions/checkout@v5`) is mutable and so not really a pin. Dependabot
+#     handles either form — it rewrites a SHA and its trailing `# vX.Y.Z`
+#     comment together — so moving to SHA pins later is a separate change this
+#     file already supports rather than one it blocks. A repo with no
+#     workflows yet still takes this ecosystem: an ecosystem with nothing to
+#     update is silent, not noisy, and the repo will not always have none.
+#   · pnpm and yarn repos take `package-ecosystem: npm` too; the ecosystem
+#     name covers the whole npm registry family, not the npm CLI.
+#
+# THERE IS DELIBERATELY NO `ignore:` LIST. An `ignore` entry suppresses
+# SECURITY updates as well as version updates, so ignoring the packages a repo
+# has hand-pinned in an `overrides` block — exactly the packages most likely to
+# need an advisory — would switch off the alerting this file exists to keep on.
+# A bump Dependabot proposes that an override then constrains is noise in one
+# grouped PR a week; a missed advisory on a pinned transitive is the failure
+# mode.
+#
+# Dependabot PRs are ordinary PRs: they run the same required contexts and are
+# merged by a human. Nothing here auto-merges.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Pacific/Auckland
+    open-pull-requests-limit: 2
+    groups:
+      github-actions:
+        patterns: ["*"]
