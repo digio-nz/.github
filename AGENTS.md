@@ -1,6 +1,6 @@
 # .github: agent brief
 
-This public repo holds the org issue forms, the PR template, the shared workflows and actions, the git hooks and the workbench image.
+This public repo holds the org issue forms, the PR template, the shared workflows and actions, the git hooks, the workbench image and the test bench.
 
 ## Stack
 
@@ -31,4 +31,5 @@ This public repo holds the org issue forms, the PR template, the shared workflow
 | --- | --- |
 | [`README.md`](README.md) | Before you change a part that other repos use. |
 | [`image/README.md`](image/README.md) | Before you change the workbench image, `hooks/` or `lib/`. |
+| [`bench/README.md`](bench/README.md) | Before you change the test bench. |
 | [`.github/actions/preview-provision/README.md`](.github/actions/preview-provision/README.md) | Before you change Preview provisioning. |

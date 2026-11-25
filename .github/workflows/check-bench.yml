@@ -1,0 +1,31 @@
+name: Check Bench
+on:
+  pull_request:
+    paths: ["bench/**", ".github/workflows/check-bench.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bench:
+    name: Build and Self-Test
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check Out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build the Image
+        shell: bash
+        run: docker build -t bench bench/
+      - name: Start the Bench
+        shell: bash
+        run: docker run -d --name bench -p 127.0.0.1:6080:6080 -p 127.0.0.1:8931:8931 bench
+      - name: Self-Test the Bench
+        shell: bash
+        run: bash bench/scripts/bench-selftest.sh
+      - name: Print the Bench Log
+        if: failure()
+        shell: bash
+        run: docker logs bench
