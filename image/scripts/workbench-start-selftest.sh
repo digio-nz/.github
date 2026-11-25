@@ -265,6 +265,8 @@ grep -Fq "git push is not guarded" "$TEST_DIR/out" || fail "post-start did not n
 grep -Fq 'install-briefs.sh apply' "$CALLS" || fail "post-start stopped at the failed hooks check"
 
 home="$TEST_DIR/home-no-michelin"; mkdir -p "$home"
+if HOME="$home" FAIL_nix_setup=1 bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1; then fail "post-start hid a failed nix-setup.sh"; fi
+grep -Fxq "FAIL: nix: fixture" "$TEST_DIR/out" || fail "post-start did not print the fault of nix-setup.sh: $(cat "$TEST_DIR/out")"
 if HOME="$home" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1; then fail "post-start accepted missing Michelin"; fi
 grep -Fq "FAIL: install-briefs: $home/.digio/michelin is missing" "$TEST_DIR/out" || fail "post-start did not warn that the briefs are missing: $(cat "$TEST_DIR/out")"
 
@@ -417,10 +419,6 @@ grep -Fxq "command 1" "$h/order" || fail "workbench-start.sh did not exec its co
 : > "$h/order"; : > "$CALLS"; cmd_start "$h"
 grep -Fxq "git -C $h/.digio/github pull -q --ff-only" "$CALLS" || fail "workbench-start.sh did not pull the start-up scripts at the next start: $(cat "$CALLS")"
 [ "$(grep -v '^command' "$h/order")" = start ] || fail "workbench-start.sh reran post-create.sh at the next start; a dev container runs it once: $(cat "$h/order")"
-h="$TEST_DIR/cmd-nix-fails"; FAIL_nix_setup=1 cmd_start "$h" 0
-[ "$(tail -n 1 "$h/.local/state/digio-workbench/start.log")" = "start: exit 1" ] && grep -Fxq "FAIL: nix: fixture" "$h/.local/state/digio-workbench/start.log" \
-  || fail "workbench-start.sh hid a failed nix-setup.sh: $(cat "$h/.local/state/digio-workbench/start.log")"
-grep -qx start "$h/order" || fail "workbench-start.sh did not run the start scripts after nix-setup.sh failed"
 h="$TEST_DIR/cmd-create-fails"; cmd_start "$h" 1
 [ "$(tail -n 1 "$h/.local/state/digio-workbench/start.log")" = "start: exit 1" ] || fail "workbench-start.sh hid a failed post-create.sh"
 ! grep -qx start "$h/order" || fail "workbench-start.sh ran post-start.sh after post-create.sh failed; a dev container does not"
@@ -454,4 +452,4 @@ grep -Fxq 'CMD ["/usr/local/bin/workbench-start.sh"]' "$DIR/../assets/image/Dock
 grep -Fq '"BASH_ENV": "/home/vscode/.digio/node-auth-token.sh"' "$DIR/../../.devcontainer/devcontainer.json" \
   || fail "devcontainer.json BASH_ENV no longer matches workbench-start.sh"
 
-echo "workbench start self-test passed: the image CMD sets up nix and runs the dev container start-up, then T3, retries the 1Password load 3 times, the start scripts check the git hooks and remove a stale global hooksPath, post-start sets the hidden-email git identity and warns on drifted briefs, post-create writes the session-export store from 1Password or warns, a rebuild keeps ~/devs and the logins, post-start links ~/devs to the workspace devs folder, keeps Codespace logins on the kept disk, routes Codespace git over HTTPS, links the factory skills, removes what SkillPort left, leaves the HumanLayer daemon stopped and fails loudly"
+echo "workbench start self-test passed: the image CMD runs the dev container start-up, then T3, retries the 1Password load 3 times, the start scripts check the git hooks and remove a stale global hooksPath, post-start sets the hidden-email git identity and warns on drifted briefs, post-create writes the session-export store from 1Password or warns, a rebuild keeps ~/devs and the logins, post-start links ~/devs to the workspace devs folder, keeps Codespace logins on the kept disk, routes Codespace git over HTTPS, links the factory skills, removes what SkillPort left, leaves the HumanLayer daemon stopped and fails loudly"

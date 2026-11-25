@@ -55,11 +55,11 @@ RUN /opt/digio/tools/tools.sh apply --prefix /usr/local --sources npm \
 RUN /opt/digio/tools/tools.sh apply --prefix /usr/local --sources installer,gh-release
 
 # The browser of the image's playwright lives in the image, so container create does no download. A product that pins
-# another Playwright adds its own build here with npx playwright install, so the user owns the folder.
+# another Playwright adds its own build here with npx playwright install. A dev container tool can give the user
+# another uid, so each user can write the folder.
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 RUN playwright install --with-deps chromium \
- && chown -R ${USERNAME}:${USERNAME} /opt/playwright \
- && chmod -R a+rX /opt/playwright \
+ && chmod -R a+rwX /opt/playwright \
  && rm -rf /var/lib/apt/lists/*
 
 # A person starts the HumanLayer daemon with this; no start-up script runs it.

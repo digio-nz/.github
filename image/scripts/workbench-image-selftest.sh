@@ -425,10 +425,10 @@ if grep -qF '"$pg_bin/initdb" -D' "$DIR/image-selftest.sh" && grep -qF 'pg_lsclu
 else
   fail "the image self-test does not run a Postgres cluster, check for an image cluster, or import PyYAML"
 fi
-grep -q '^ && chown -R ${USERNAME}:${USERNAME} /opt/playwright \\$' "$dockerfile" \
+grep -q '^ && chmod -R a+rwX /opt/playwright \\$' "$dockerfile" \
   && grep -qF 'find "$browsers" ! -writable' "$DIR/image-selftest.sh" \
-  && pass "the user owns the Playwright browsers folder, so a product adds its own build, and the image self-test checks it" \
-  || fail "the user does not own /opt/playwright, or the image self-test does not check it"
+  && pass "each user can write the Playwright browsers folder, so a product adds its own build, and the image self-test checks it" \
+  || fail "a user cannot write /opt/playwright, or the image self-test does not check it"
 grep -qxE '[0-9]+' "$DIR/../references/node-major" && grep -qF 'references/node-major' "$DIR/image-selftest.sh" \
   && pass "image/references/node-major is one Node major, and the image self-test compares node --version with it" \
   || fail "image/references/node-major is not one Node major, or the image self-test does not read it"

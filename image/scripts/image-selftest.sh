@@ -24,6 +24,8 @@ NO_MISTAKES_BIN="$(command -v no-mistakes)" || fail "no-mistakes is not on PATH"
 skills-manager-cli --version >/dev/null \
   || fail "skills-manager-cli did not report a version"
 
+# This run has no start script, and the dev container tool of the build gives the user the uid of the runner.
+nix-setup.sh || fail "nix-setup.sh did not set up /nix for $(id -un)"
 # An evaluation proves that the user can write the store, which a version line does not.
 [ "$(nix eval --expr '1 + 1')" = 2 ] \
   || fail "nix did not evaluate an expression as $(id -un)"

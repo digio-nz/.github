@@ -21,7 +21,7 @@ The image self-test fails when `node --version` shows a different major.
 When the products move to a new major, change the file.
 
 `PLAYWRIGHT_BROWSERS_PATH` is `/opt/playwright`, which holds the Chromium build of the image's `playwright`.
-The user owns the folder.
+Each user can write the folder, because a dev container tool can change the uid of the user.
 A product that pins a different Playwright version needs a different build.
 To add that build, run `npx playwright install chromium` in the product.
 
@@ -38,6 +38,7 @@ The Dockerfile pins its version and the checksum of the release asset for each a
 The image holds a single-user [nix](https://nix.dev/manual/nix/latest/), so an agent can check a flake before a commit.
 The Dockerfile pins its release and the checksum of the tarball for each architecture, and the tarball stays in the image.
 `nix-setup.sh` installs it into `/nix` for the user at the build.
-`workbench-start.sh` runs the script again at each start, because a volume at `/nix` can be empty or can hold the nix of an older image.
+`post-start.sh` runs the script again at each start, because a volume at `/nix` can be empty or can hold the nix of an older image.
+The script also gives `/nix` to the user when a dev container tool has changed the uid of the user.
 A host that mounts a volume at `/nix` keeps the store across a restart. With no volume, a restart empties the store.
 `node-auth-token.sh` gives nix the `GH_TOKEN`, which a private input of a flake needs.

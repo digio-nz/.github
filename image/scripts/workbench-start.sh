@@ -33,7 +33,6 @@ if [ -z "${WORKBENCH_OP_ENV_LOADED:-}" ]; then
   fi
 fi
 {
-  nix-setup.sh; nix=$?
   if [ -d "$scripts/.git" ]; then
     git -C "$scripts" pull -q --ff-only || echo "digio-nz/.github refresh failed; using the existing checkout" >&2
   else
@@ -41,9 +40,7 @@ fi
   fi
   { [ -e "$state/created" ] || { bash "$scripts/image/scripts/post-create.sh" && touch "$state/created"; }; } \
     && bash "$scripts/image/scripts/post-start.sh"
-  code=$?
-  [ "$nix" -eq 0 ] || code=1
-  echo "start: exit $code"
+  echo "start: exit $?"
 } > "$state/start.log" 2>&1 &
 [ "$#" -gt 0 ] || set -- t3 --no-browser --host 0.0.0.0 --port 3773
 exec "$@"

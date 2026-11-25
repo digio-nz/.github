@@ -13,11 +13,13 @@ want="$(cat "$image/store-path" 2>/dev/null)" || fail "$image/store-path is miss
 name="${want##*/}"
 [ -n "$name" ] || fail "$image/store-path is empty"
 root="$dir/var/nix/gcroots/workbench-nix"
-if [ -x "$dir/store/$name/bin/nix" ] && [ "$(readlink "$root" 2>/dev/null)" = "$want" ]; then exit 0; fi
 
-# An older container has no /nix, and Docker makes a new volume as root when the image has no folder for it.
-if [ ! -w "$dir" ] && [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then sudo -n install -d -o "$(id -u)" -g "$(id -g)" "$dir" 2>/dev/null; fi
+# An older container has no /nix, Docker makes a new volume as root, and a dev container tool can give the user another uid.
+if [ ! -e "$dir" ] || [ "$(stat -c %u "$dir")" != "$(id -u)" ]; then
+  sudo -n install -d -o "$(id -u)" -g "$(id -g)" "$dir" 2>/dev/null && sudo -n chown -R "$(id -u):$(id -g)" "$dir"
+fi
 { [ -d "$dir" ] && [ -w "$dir" ]; } || fail "$(id -un) cannot write $dir; give that folder to $(id -un)"
+if [ -x "$dir/store/$name/bin/nix" ] && [ "$(readlink "$root" 2>/dev/null)" = "$want" ]; then exit 0; fi
 
 unpack="$(mktemp -d "$dir/.unpack.XXXXXX")" || fail "cannot make a folder in $dir"
 # A store path is read-only, and a folder can move or go only when its owner can write it.
