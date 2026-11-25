@@ -82,6 +82,9 @@ jobs:
       - name: Check the Tailnet Join
         shell: bash
         run: bash image/scripts/tailnet-start-selftest.sh
+      - name: Check the Nix Setup
+        shell: bash
+        run: bash image/scripts/nix-setup-selftest.sh
       - name: Check the Lint Hook
         shell: bash
         run: bash image/scripts/lint-hook-selftest.sh

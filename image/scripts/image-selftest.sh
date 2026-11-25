@@ -24,6 +24,10 @@ NO_MISTAKES_BIN="$(command -v no-mistakes)" || fail "no-mistakes is not on PATH"
 skills-manager-cli --version >/dev/null \
   || fail "skills-manager-cli did not report a version"
 
+# An evaluation proves that the user can write the store, which a version line does not.
+[ "$(nix eval --expr '1 + 1')" = 2 ] \
+  || fail "nix did not evaluate an expression as $(id -un)"
+
 [ -r /etc/claude-code/managed-settings.json ] \
   || fail "$(id -un) cannot read /etc/claude-code/managed-settings.json, so Claude Code gets no managed settings"
 jq -e '.enabledPlugins["egm@egm"] == true and (.extraKnownMarketplaces.egm.source.ref | length == 40)' /etc/claude-code/managed-settings.json >/dev/null \

@@ -22,6 +22,25 @@ RUN case "$(dpkg --print-architecture)" in \
  && echo "$sum  /usr/local/bin/skills-manager-cli" | sha256sum -c - \
  && chmod 0755 /usr/local/bin/skills-manager-cli
 
+# nix checks a flake, such as the machines of digio-nz/digio-machines. tools.tsv takes only latest, and this release is
+# pinned with the checksum of each architecture's tarball, so the install is here. The tarball stays in the image:
+# nix-setup.sh installs it for the user below, and again at a start into a volume at /nix that does not hold it.
+RUN case "$(dpkg --print-architecture)" in \
+      amd64) system=x86_64-linux sum=c4d1aed088f62aa729823cffa3269e880de6ce6102fecb8909f2821eedb2f2eb ;; \
+      arm64) system=aarch64-linux sum=ee696971de946d311699f6dd639cccc8c6734aec9a061b8e205de0ce6515e5ae ;; \
+      *) echo "nix: no pinned release for $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac \
+ && mkdir -p /opt/digio/nix \
+ && curl -fsSL -o /opt/digio/nix/nix.tar.xz "https://releases.nixos.org/nix/nix-2.36.0/nix-2.36.0-$system.tar.xz" \
+ && echo "$sum  /opt/digio/nix/nix.tar.xz" | sha256sum -c - \
+ && tar -xJOf /opt/digio/nix/nix.tar.xz --wildcards '*/install' | sed -n 's/^nix="\(.*\)"$/\1/p' > /opt/digio/nix/store-path \
+ && test -s /opt/digio/nix/store-path \
+ && install -d -o "$USERNAME" -g "$USERNAME" /nix \
+ && ln -s /nix/var/nix/gcroots/workbench-nix/bin/nix /usr/local/bin/nix
+COPY assets/image/nix.conf /etc/nix/nix.conf
+COPY scripts/nix-setup.sh /usr/local/bin/nix-setup.sh
+RUN chmod 0755 /usr/local/bin/nix-setup.sh
+
 COPY references/tools.tsv scripts/tools.sh /opt/digio/tools/
 RUN chmod 0755 /opt/digio/tools/tools.sh
 
@@ -75,6 +94,7 @@ COPY scripts/workbench-start.sh /usr/local/bin/workbench-start.sh
 RUN chmod 0755 /usr/local/bin/workbench-start.sh
 
 USER ${USERNAME}
+RUN nix-setup.sh
 # The home does not depend on the runtime: a Vercel Sandbox runs no entrypoint and sets its own environment.
 ENV HOME=/home/${USERNAME}
 WORKDIR /workspaces
