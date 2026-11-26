@@ -10,8 +10,7 @@
       "Glob",
       "Grep",
       "Skill",
-      "Bash(bash /home/vscode/.claude/skills/*/scripts/*)",
-      "Bash(bash /opt/digio/skills/skills/*/scripts/*)"
+      "Bash(bash /home/vscode/.claude/skills/*/scripts/*)"
     ],
     "deny": ["mcp__test-browser__browser_run_code_unsafe", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent"]
   }
