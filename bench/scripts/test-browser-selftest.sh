@@ -44,4 +44,14 @@ case "$out" in
   *'Page Title: noVNC'*) echo "ok: the browser opened $inner" ;;
   *) fail "the browser did not open $inner: ${out:0:400}" ;;
 esac
+call() { printf '{"jsonrpc":"2.0","id":%s,"method":"tools/call","params":{"name":"%s","arguments":%s}}' "$1" "$2" "$3"; }
+out="$(post -d "$(call 3 browser_start_video '{"filename":"selftest.webm"}')")" || fail "browser_start_video failed"
+case "$out" in *'"isError":true'*) fail "browser_start_video returned an error: ${out:0:400}" ;; esac
+post -o /dev/null -d "$(call 4 browser_navigate "{\"url\":\"$inner\"}")" || fail "browser_navigate during the video failed"
+out="$(post -d "$(call 5 browser_stop_video '{}')")" || fail "browser_stop_video failed"
+case "$out" in
+  *'"isError":true'*) fail "browser_stop_video returned an error: ${out:0:400}" ;;
+  *selftest.webm*) echo "ok: the browser recorded the video selftest.webm" ;;
+  *) fail "browser_stop_video named no file selftest.webm: ${out:0:400}" ;;
+esac
 echo "test-browser: ok"

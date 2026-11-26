@@ -60,6 +60,8 @@ mcp_args=(
   # The client's roots are folders of test-agent, which this container does not have.
   --ignore-roots
   --save-session
+  # The video tools: each run of the test agent records its video, the evidence of each result.
+  --caps devtools
   --viewport-size "${geometry/x/,}"
   --shared-browser-context
 )
@@ -73,7 +75,9 @@ if [ -n "$bypass_hosts" ]; then
   mcp_args+=(--init-page "$bypass_page")
 fi
 
-DISPLAY="$display" playwright-mcp "${mcp_args[@]}" &
+# With no roots, the working folder is the workspace root, so a file with a name goes to the output folder too.
+mkdir -p "$data/output"
+(cd "$data/output" && DISPLAY="$display" exec playwright-mcp "${mcp_args[@]}") &
 names[$!]="playwright-mcp"
 
 echo "test-browser-start: viewer on port $view_port (/vnc.html?autoconnect=1&resize=scale), MCP on port $mcp_port (/mcp)"

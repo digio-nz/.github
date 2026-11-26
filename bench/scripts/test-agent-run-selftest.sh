@@ -26,7 +26,11 @@ case "$1" in
         for word in "$@"; do case "$word" in *"person "*"${CLAUDE_FAIL:-none}"*) echo "usage limit" >&2; exit 1 ;; esac; done
         printf '%s\n' '{"type":"system"}' '{"type":"result","result":"# Report\nline two"}' ;;
     esac ;;
-  cp) mkdir -p "$3" ;;
+  cp)
+    case "$2" in
+      *.webm) case "$2" in *"${NO_VIDEO:-none}"*) exit 1 ;; esac; echo video > "$3" ;;
+      *) mkdir -p "$3" ;;
+    esac ;;
 esac
 STUB
 chmod +x "$TEST_DIR/bin/docker"
@@ -39,8 +43,15 @@ ROUNDS=2 run two demo https://ok.example 1; code=$?
 [ -e "$TEST_DIR/two/r02-two.md" ] && [ ! -e "$TEST_DIR/two/r03-one.md" ] \
   && pass "ROUNDS stops after that many rounds" || fail "ROUNDS did not stop the runs: $(ls "$TEST_DIR/two")"
 [ "$(cat "$TEST_DIR/two/r01-one.md")" = $'# Report\nline two' ] && pass "the report is the result of the session" || fail "the report is [$(cat "$TEST_DIR/two/r01-one.md")]"
-grep -q '^| 1 | one@example.com | .* | 0 | # Report |$' "$TEST_DIR/two/index.md" && pass "the index has a row for each run" || fail "the index: $(cat "$TEST_DIR/two/index.md")"
+grep -q '^| 1 | one@example.com | .* | 0 | yes | # Report |$' "$TEST_DIR/two/index.md" && pass "the index has a row for each run" || fail "the index: $(cat "$TEST_DIR/two/index.md")"
 [ -d "$TEST_DIR/two/browser-output" ] && pass "the output of test-browser is copied" || fail "no browser-output folder"
+
+[ -s "$TEST_DIR/two/r01-one.webm" ] && pass "the video of a run is copied next to its report" || fail "no video r01-one.webm"
+grep -q 'The run name is r01-one\.' "$CALLS" && pass "the task gives the run name of the video" || fail "the task has no run name: $(grep ' claude -p' "$CALLS")"
+
+ROUNDS=1 NO_VIDEO=r01-two run novideo demo https://ok.example 1; code=$?
+[ "$code" = 1 ] && grep -q 'r01-two gave a report and no video' "$TEST_DIR/out" && grep -q '| two@example.com | .* | 0 | no |' "$TEST_DIR/novideo/index.md" \
+  && pass "a run with no video fails and the index says so" || fail "a run with no video gave exit $code: $(cat "$TEST_DIR/out")"
 
 ROUNDS=1 run skip demo https://ok.example 1 vacation
 grep -q 'Skip the feature: vacation\.' "$CALLS" && pass "the task names the feature to skip" || fail "the task has no skip: $(grep claude "$CALLS")"
