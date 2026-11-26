@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Starts the test bench: a display, a viewer for a person and a Playwright MCP server for an agent.
+# Starts test-browser: a display, a viewer for a person and a Playwright MCP server for an agent.
 set -euo pipefail
 
-display="${BENCH_DISPLAY:-:1}"
-geometry="${BENCH_GEOMETRY:-1440x900}"
-view_port="${BENCH_VIEW_PORT:-6080}"
-mcp_port="${BENCH_MCP_PORT:-8931}"
-data="${BENCH_DATA:-$HOME/bench}"
-novnc="${BENCH_NOVNC_DIR:-/usr/share/novnc}"
+display="${TEST_BROWSER_DISPLAY:-:1}"
+geometry="${TEST_BROWSER_GEOMETRY:-1440x900}"
+view_port="${TEST_BROWSER_VIEW_PORT:-6080}"
+mcp_port="${TEST_BROWSER_MCP_PORT:-8931}"
+data="${TEST_BROWSER_DATA:-$HOME/data}"
+novnc="${TEST_BROWSER_NOVNC_DIR:-/usr/share/novnc}"
 
 fail() {
-  echo "bench-start: $*" >&2
+  echo "test-browser-start: $*" >&2
   exit 1
 }
 
@@ -23,7 +23,7 @@ mkdir -p "$data/profile" "$data/output"
 vnc_port=$((5900 + ${display#:}))
 declare -A names
 
-# The viewer has no password. Only the tailnet serve and the bench network reach these ports.
+# The viewer has no password. Only the tailnet serve and the network of the bench reach these ports.
 Xvnc "$display" -geometry "$geometry" -depth 24 -SecurityTypes None -localhost -AlwaysShared &
 names[$!]="Xvnc"
 for _ in $(seq 50); do
@@ -47,17 +47,17 @@ mcp_args=(
   --viewport-size "${geometry/x/,}"
   --shared-browser-context
 )
-[ -n "${BENCH_MCP_ALLOWED_HOSTS:-}" ] && mcp_args+=(--allowed-hosts "$BENCH_MCP_ALLOWED_HOSTS")
-[ -n "${BENCH_ALLOWED_ORIGINS:-}" ] && mcp_args+=(--allowed-origins "$BENCH_ALLOWED_ORIGINS")
-[ -n "${BENCH_SECRETS_FILE:-}" ] && mcp_args+=(--secrets "$BENCH_SECRETS_FILE")
-[ "${BENCH_NO_SANDBOX:-}" = 1 ] && mcp_args+=(--no-sandbox)
+[ -n "${TEST_BROWSER_MCP_ALLOWED_HOSTS:-}" ] && mcp_args+=(--allowed-hosts "$TEST_BROWSER_MCP_ALLOWED_HOSTS")
+[ -n "${TEST_BROWSER_ALLOWED_ORIGINS:-}" ] && mcp_args+=(--allowed-origins "$TEST_BROWSER_ALLOWED_ORIGINS")
+[ -n "${TEST_BROWSER_SECRETS_FILE:-}" ] && mcp_args+=(--secrets "$TEST_BROWSER_SECRETS_FILE")
+[ "${TEST_BROWSER_NO_SANDBOX:-}" = 1 ] && mcp_args+=(--no-sandbox)
 
 DISPLAY="$display" playwright-mcp "${mcp_args[@]}" &
 names[$!]="playwright-mcp"
 
-echo "bench-start: viewer on port $view_port (/vnc.html?autoconnect=1&resize=scale), MCP on port $mcp_port (/mcp)"
+echo "test-browser-start: viewer on port $view_port (/vnc.html?autoconnect=1&resize=scale), MCP on port $mcp_port (/mcp)"
 
 trap 'kill "${!names[@]}" 2>/dev/null || true' EXIT
 dead=0
 wait -n -p dead "${!names[@]}" || true
-fail "${names[$dead]:-a process} stopped; the bench stops with it"
+fail "${names[$dead]:-a process} stopped; test-browser stops with it"

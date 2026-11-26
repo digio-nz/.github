@@ -16,7 +16,7 @@ This repository runs the gate self-tests on a hosted runner through `check-disci
 Its tools are in `image/references/tools.tsv`, and `image/skills.ref` pins the skills it checks against.
 `hooks/` and `lib/` are what the image bakes in or sources. `check-workspace.yml` tests all three.
 
-`bench/` holds the test bench: a container with one browser that a test agent drives and a person watches. Its [README](bench/README.md) states its parts and limits, and `check-bench.yml` builds and tests it.
+`bench/` holds the test bench: the container `test-browser`, with one browser that a person watches, and the container `test-agent`, which drives that browser. Its [README](bench/README.md) states its parts and limits, and `check-bench.yml` builds and tests it.
 
 Michelin calls `digio-nz/.github/.github/workflows/label-pr.yml@main` to label its PRs without adding Discipline gates.
 Labelling includes draft PRs and has no path filter.

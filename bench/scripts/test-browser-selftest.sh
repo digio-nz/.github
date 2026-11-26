@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Checks a running bench: the viewer serves its page, and the MCP server opens that page in the bench browser.
-# Usage: bench-selftest.sh [viewer URL] [MCP URL]. The page that the browser opens is the viewer inside the bench.
+# Checks a running test-browser: the viewer serves its page, and the MCP server opens that page in the browser.
+# Usage: test-browser-selftest.sh [viewer URL] [MCP URL]. The page that the browser opens is the viewer inside the container.
 set -euo pipefail
 
 viewer="${1:-http://127.0.0.1:6080}"
 mcp="${2:-http://127.0.0.1:8931/mcp}"
-inner="${BENCH_SELFTEST_PAGE:-http://127.0.0.1:6080/vnc.html}"
+inner="${TEST_BROWSER_SELFTEST_PAGE:-http://127.0.0.1:6080/vnc.html}"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -24,10 +24,15 @@ post() {
   curl -fsS -m 120 -X POST "$mcp" "${headers[@]}" "$@"
 }
 
-init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"bench-selftest","version":"0"}}}'
-session="$(post -D - -o /dev/null -d "$init" | tr -d '\r' | awk -F': ' 'tolower($1)=="mcp-session-id"{print $2}')" \
-  || fail "the MCP server at $mcp refused initialize"
-[ -n "$session" ] || fail "the MCP server at $mcp gave no session id"
+init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test-browser-selftest","version":"0"}}}'
+# The MCP server starts after the viewer.
+session=""
+for _ in $(seq 60); do
+  session="$(post -D - -o /dev/null -d "$init" 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="mcp-session-id"{print $2}')" || true
+  [ -z "$session" ] || break
+  sleep 1
+done
+[ -n "$session" ] || fail "the MCP server at $mcp opened no session in 60 s"
 headers+=(-H "mcp-session-id: $session")
 post -o /dev/null -d '{"jsonrpc":"2.0","method":"notifications/initialized"}' || fail "the MCP server refused the session"
 echo "ok: the MCP server opens a session"
@@ -39,4 +44,4 @@ case "$out" in
   *'Page Title: noVNC'*) echo "ok: the browser opened $inner" ;;
   *) fail "the browser did not open $inner: ${out:0:400}" ;;
 esac
-echo "bench: ok"
+echo "test-browser: ok"

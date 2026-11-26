@@ -1,0 +1,42 @@
+# The test bench: test-browser holds the browser, and test-agent holds the agent that drives it.
+# The README states the variables. Run from bench/: docker compose up -d --build
+name: test-bench
+
+services:
+  test-browser:
+    build: .
+    image: test-browser
+    restart: unless-stopped
+    environment:
+      # test-agent calls the MCP server by this name. A call by another name, such as from the host, is refused.
+      TEST_BROWSER_MCP_ALLOWED_HOSTS: test-browser
+    ports:
+      # The viewer only. The MCP port stays on the network of the bench.
+      - "127.0.0.1:${TEST_BROWSER_VIEW_PORT:-6080}:6080"
+    volumes:
+      - test-browser-data:/home/browser/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:6080/vnc.html').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  test-agent:
+    image: ${TEST_AGENT_IMAGE:-ghcr.io/digio-nz/workbench:latest}
+    command: ["bash", "/opt/test-agent/test-agent-start.sh"]
+    depends_on:
+      test-browser:
+        condition: service_healthy
+    environment:
+      TEST_AGENT_PRESET: ${TEST_AGENT_PRESET:?name the skills preset of the test agent}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./scripts/test-agent-start.sh:/opt/test-agent/test-agent-start.sh:ro
+      - ./test-agent/managed-settings.json:/etc/claude-code/managed-settings.json:ro
+      - ./test-agent/managed-mcp.json:/etc/claude-code/managed-mcp.json:ro
+      - ${DIGIO_SKILLS_ROOT:?give the path of a digio-skills checkout}:/opt/digio/skills:ro
+      - ${DIGIO_MICHELIN_ROOT:?give the path of a digio-michelin checkout}:/opt/digio/michelin:ro
+
+volumes:
+  test-browser-data:
