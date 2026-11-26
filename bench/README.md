@@ -66,7 +66,7 @@ The compose file reads these variables from the environment or from a `.env` fil
 
 ```sh
 cd bench
-docker compose up -d --build
+docker compose up -d
 docker compose exec test-agent claude -p "Use the browser-test skill. Test fcdispatch at <address of the Preview>."
 ```
 
