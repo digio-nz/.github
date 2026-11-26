@@ -40,6 +40,11 @@ jobs:
       - name: Self-Test test-browser
         shell: bash
         run: bash bench/scripts/test-browser-selftest.sh http://test-browser:6080 http://test-browser:8931/mcp
+      - name: Check That the Video Is in the Output Folder
+        shell: bash
+        run: |
+          docker compose -f bench/compose.yaml exec -T test-browser test -s /home/browser/data/output/selftest.webm \
+            || { echo "FAIL: test-browser has no video /home/browser/data/output/selftest.webm after the self-test" >&2; docker compose -f bench/compose.yaml exec -T test-browser ls -la /home/browser/data/output >&2; exit 1; }
       - name: Check That a Call by Another Name Is Refused
         shell: bash
         run: |

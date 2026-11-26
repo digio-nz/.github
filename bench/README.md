@@ -94,10 +94,12 @@ The runner keeps these records in `~/test-bench/results/<product>-<UTC time>`, o
 | --- | --- |
 | `index.md` | A row for each run: the round, the person, the start, the exit code and the first line of the report |
 | `r<round>-<person>.md` | The report of the run |
+| `r<round>-<person>.webm` | The video of the run, with a chapter for each check. It is the evidence of each result, for a person or a review agent |
 | `r<round>-<person>.jsonl` | The transcript of the session: each tool call and each page that the agent read |
 | `browser-output/` | The screenshots and the session logs of the MCP server, copied from `test-browser` at the end |
 
 A run that fails, such as at a usage limit of the model, gets a `FAIL:` line, and the next run waits 5 minutes.
+A run that gives a report and no video also gets a `FAIL:` line, because its results have no evidence.
 Three failed runs in a row stop the runner. It exits 1 when a run failed.
 `ROUNDS` stops it after that many rounds.
 

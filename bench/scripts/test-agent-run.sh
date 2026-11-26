@@ -6,10 +6,11 @@
 # Run it on the host of the bench, with docker and jq. Each run is one Claude Code session in test-agent.
 # RESULTS is the folder of the records, by default ~/test-bench/results/<product>-<UTC time>.
 # ROUNDS stops the runs after that many rounds, before the hours end.
-# Exit 0 when each run gave a report, 1 when a run failed, 2 on bad usage.
+# Each run records its video <run>.webm in test-browser, and the runner copies it next to the report.
+# Exit 0 when each run gave a report and a video, 1 when a run failed, 2 on bad usage.
 set -uo pipefail
 
-usage() { sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 fail() { echo "FAIL: test-agent-run: $*" >&2; exit 1; }
 
 [ $# -ge 3 ] && [ $# -le 4 ] || usage
@@ -33,7 +34,7 @@ in_agent bash "$skill" host "$product" "$address" || fail "the plan of $product 
 people="$(in_agent bash "$skill" people "$product")" || fail "browser-test.sh people $product failed"
 mkdir -p "$results" || fail "cannot make $results"
 index="$results/index.md"
-printf '# %s at %s\n\nStarted %s, for %s hours.%s\n\n| Round | Person | Started | Exit | First line of the report |\n| --- | --- | --- | --- | --- |\n' \
+printf '# %s at %s\n\nStarted %s, for %s hours.%s\n\n| Round | Person | Started | Exit | Video | First line of the report |\n| --- | --- | --- | --- | --- | --- |\n' \
   "$product" "$address" "$(date -u +%FT%TZ)" "$hours" "${skip:+ Skips: $skip.}" > "$index"
 echo "test-agent-run: records in $results"
 
@@ -43,7 +44,7 @@ while [ "$(date +%s)" -lt "$end" ] && { [ "$rounds" -eq 0 ] || [ "$round" -le "$
   while IFS= read -r person; do
     [ "$(date +%s)" -lt "$end" ] || break
     name="$(printf 'r%02d-%s' "$round" "${person%%@*}")"
-    task="Use the browser-test skill. Do a full run of $product at $address for the person $person, round $round."
+    task="Use the browser-test skill. Do a full run of $product at $address for the person $person, round $round. The run name is $name."
     [ -z "$skip" ] || task="$task Skip the feature: $skip."
     started="$(date -u +%FT%TZ)"
     echo "test-agent-run: $started $name"
@@ -51,10 +52,16 @@ while [ "$(date +%s)" -lt "$end" ] && { [ "$rounds" -eq 0 ] || [ "$round" -le "$
     code=$?
     jq -rs '[.[] | select(.type == "result")] | last | .result // empty' "$results/$name.jsonl" > "$results/$name.md" 2>/dev/null
     first="$(grep -m 1 . "$results/$name.md" | tr '|' '/' | cut -c 1-160)"
-    printf '| %s | %s | %s | %s | %s |\n' "$round" "$person" "$started" "$code" "${first:-no report}" >> "$index"
-    if [ "$code" -ne 0 ] || [ -z "$first" ]; then
+    video=yes
+    docker cp "$browser:/home/browser/data/output/$name.webm" "$results/$name.webm" >/dev/null 2>&1 && [ -s "$results/$name.webm" ] || video=no
+    printf '| %s | %s | %s | %s | %s | %s |\n' "$round" "$person" "$started" "$code" "$video" "${first:-no report}" >> "$index"
+    if [ "$video" = no ] && [ "$code" -eq 0 ] && [ -n "$first" ]; then
+      failed=$((failed + 1))
+      echo "FAIL: test-agent-run: $name gave a report and no video $name.webm, so its results have no evidence" >&2
+    elif [ "$code" -ne 0 ] || [ -z "$first" ]; then
       failed=$((failed + 1)) in_a_row=$((in_a_row + 1))
-      echo "FAIL: test-agent-run: $name exited $code${first:+ after its report}${first:- with no report}; see $results/$name.err" >&2
+      what="with no report"; [ -z "$first" ] || what="after its report"
+      echo "FAIL: test-agent-run: $name exited $code $what; see $results/$name.err" >&2
       [ "$in_a_row" -lt 3 ] || { echo "FAIL: test-agent-run: three runs in a row failed, so the runs stop" >&2; break 2; }
       sleep "$pause"
     else
