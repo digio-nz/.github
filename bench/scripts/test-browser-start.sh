@@ -57,6 +57,9 @@ mcp_args=(
   --port "$mcp_port"
   --user-data-dir "$data/profile"
   --output-dir "$data/output"
+  # The client's roots are folders of test-agent, which this container does not have.
+  --ignore-roots
+  --save-session
   --viewport-size "${geometry/x/,}"
   --shared-browser-context
 )
