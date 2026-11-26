@@ -28,7 +28,7 @@ services:
       test-browser:
         condition: service_healthy
     environment:
-      TEST_AGENT_PRESET: ${TEST_AGENT_PRESET:?name the skills preset of the test agent}
+      TEST_AGENT_PRESET: ${TEST_AGENT_PRESET:-test}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:

@@ -41,7 +41,7 @@ The compose file mounts four things into it, each read-only:
 | Mount | Job |
 | --- | --- |
 | `scripts/test-agent-start.sh` | The command of the container |
-| `test-agent/managed-settings.json` | The tools that Claude Code permits: the browser tools, `Read`, `Glob`, `Grep` and `Skill`. It replaces the managed settings of the image, and a setting inside the container cannot widen it |
+| `test-agent/managed-settings.json` | The tools that Claude Code permits: the browser tools, `Read`, `Glob`, `Grep`, `Skill` and the scripts of the linked skills. It replaces the managed settings of the image, and a setting inside the container cannot widen it |
 | `test-agent/managed-mcp.json` | The one MCP server, that of `test-browser`. Claude Code accepts no other server |
 | A digio-skills checkout and a digio-michelin checkout | The skills and the agent brief. The host keeps the two checkouts current, so the container needs no GitHub token |
 
@@ -57,7 +57,7 @@ The compose file reads these variables from the environment or from a `.env` fil
 | --- | --- | --- |
 | `DIGIO_SKILLS_ROOT` | required | The path of the digio-skills checkout on the host |
 | `DIGIO_MICHELIN_ROOT` | required | The path of the digio-michelin checkout on the host |
-| `TEST_AGENT_PRESET` | required | The skills preset of the test agent |
+| `TEST_AGENT_PRESET` | `test` | The skills preset of the test agent, a preset of digio-skills |
 | `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` | the start needs one | The model credential |
 | `TEST_AGENT_IMAGE` | `ghcr.io/digio-nz/workbench:latest` | The image of `test-agent` |
 | `TEST_BROWSER_VIEW_PORT` | `6080` | The port of the viewer on the loopback address of the host |
@@ -65,7 +65,7 @@ The compose file reads these variables from the environment or from a `.env` fil
 ```sh
 cd bench
 docker compose up -d --build
-docker compose exec test-agent claude -p "Open https://example.com and state the page title."
+docker compose exec test-agent claude -p "Use the browser-test skill. Test fcdispatch at <address of the Preview>."
 ```
 
 Run `test-browser` alone, with its MCP port on the host:

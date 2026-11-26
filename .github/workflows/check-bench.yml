@@ -15,7 +15,6 @@ jobs:
       # The compose file requires these for test-agent, which this job does not start.
       DIGIO_SKILLS_ROOT: /nonexistent/digio-skills
       DIGIO_MICHELIN_ROOT: /nonexistent/digio-michelin
-      TEST_AGENT_PRESET: none
     steps:
       - name: Check Out
         uses: actions/checkout@v7

@@ -4,7 +4,14 @@
   "permissions": {
     "defaultMode": "dontAsk",
     "disableBypassPermissionsMode": "disable",
-    "allow": ["mcp__test-browser__*", "Read", "Glob", "Grep", "Skill"],
-    "deny": ["Bash", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent"]
+    "allow": [
+      "mcp__test-browser__*",
+      "Read",
+      "Glob",
+      "Grep",
+      "Skill",
+      "Bash(bash /home/vscode/.claude/skills/*/scripts/*)"
+    ],
+    "deny": ["Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent"]
   }
 }
