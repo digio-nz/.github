@@ -38,8 +38,8 @@ RUN case "$(dpkg --print-architecture)" in \
  && install -d -o "$USERNAME" -g "$USERNAME" /nix \
  && ln -s /nix/var/nix/gcroots/workbench-nix/bin/nix /usr/local/bin/nix
 COPY assets/image/nix.conf /etc/nix/nix.conf
-COPY scripts/nix-setup.sh /usr/local/bin/nix-setup.sh
-RUN chmod 0755 /usr/local/bin/nix-setup.sh
+COPY scripts/nix-setup.sh scripts/machine-id.sh /usr/local/bin/
+RUN chmod 0755 /usr/local/bin/nix-setup.sh /usr/local/bin/machine-id.sh
 
 COPY references/tools.tsv scripts/tools.sh /opt/digio/tools/
 RUN chmod 0755 /opt/digio/tools/tools.sh

@@ -109,6 +109,9 @@ brief_drift() {
 # workbench-start.sh gives this script each credential in its environment. It leaves a line here when 1Password did not answer.
 OP_ENV_FAIL="$HOME/.local/state/digio-workbench/op-env.fail"
 if [ -s "$OP_ENV_FAIL" ]; then cat "$OP_ENV_FAIL" >&2; failed=1; fi
+# workbench-start.sh leaves a line here when the container does not have the machine id of its home.
+MACHINE_ID_FAIL="$HOME/.local/state/digio-workbench/machine-id.fail"
+if [ -s "$MACHINE_ID_FAIL" ]; then cat "$MACHINE_ID_FAIL" >&2; failed=1; fi
 # With GH_TOKEN in the environment, gh needs no sign-in file. git asks gh for the token.
 if [ -n "${GH_TOKEN:-}" ]; then
   gh auth setup-git || { echo "FAIL: gh: cannot set gh as the credential helper of git" >&2; failed=1; }

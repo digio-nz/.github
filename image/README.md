@@ -42,3 +42,7 @@ The Dockerfile pins its release and the checksum of the tarball for each archite
 The script also gives `/nix` to the user when a dev container tool has changed the uid of the user.
 A host that mounts a volume at `/nix` keeps the store across a restart. With no volume, a restart empties the store.
 `node-auth-token.sh` gives nix the `GH_TOKEN`, which a private input of a flake needs.
+
+Each image build makes a new `/etc/machine-id`.
+`machine-id.sh` saves the id of the first start in the home, and `workbench-start.sh` runs it at each start to put that id back.
+A program that keys its identity on the machine id then stays the same machine across an image update.
