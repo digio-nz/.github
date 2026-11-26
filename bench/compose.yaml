@@ -1,11 +1,13 @@
 # The test bench: test-browser holds the browser, and test-agent holds the agent that drives it.
-# The README states the variables. Run from bench/: docker compose up -d --build
+# The README states the variables. Run from bench/: docker compose up -d
 name: test-bench
 
 services:
   test-browser:
     build: .
     image: test-browser
+    # Each `up` builds from this checkout, so a pulled change reaches the next start.
+    pull_policy: build
     restart: unless-stopped
     environment:
       # test-agent calls the MCP server by this name and port. A call by another name, such as from the host, is refused.
