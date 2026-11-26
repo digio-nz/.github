@@ -18,7 +18,7 @@ RUN mkdir -p /opt/test-browser && cd /opt/test-browser \
  && npm cache clean --force \
  && rm -rf /var/lib/apt/lists/*
 
-COPY scripts/test-browser-start.sh /opt/test-browser/test-browser-start.sh
+COPY scripts/test-browser-start.sh scripts/test-browser-bypass.ts /opt/test-browser/
 # The base image's user has the ID 1000; this image renames it.
 RUN usermod --login browser --home /home/browser --move-home node \
  && mkdir -p /home/browser/data /tmp/.X11-unix \

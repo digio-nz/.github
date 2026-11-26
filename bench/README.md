@@ -31,6 +31,7 @@ The two names do not change. A machine can also run a browser that agents share 
 | `TEST_BROWSER_MCP_ALLOWED_HOSTS` | loopback only; `test-browser:8931` in the compose file | The `Host` values, each a name with its port, that a client can use for the MCP server |
 | `TEST_BROWSER_ALLOWED_ORIGINS` | each origin | The origins that the browser can request. Playwright MCP states that this list is not a security boundary |
 | `TEST_BROWSER_SECRETS_FILE` | none | A dotenv file of login values. The agent types a value by its name and does not see it |
+| `TEST_BROWSER_BYPASS_SECRET` and `TEST_BROWSER_BYPASS_HOSTS` | none | A [Protection Bypass for Automation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation) secret of one Vercel project, and the hosts that get it, with commas between them. A host can have `*` in its first label, after a name, such as `product-*-team.vercel.app`. The browser adds the secret to each request for those hosts and to no other request |
 | `TEST_BROWSER_NO_SANDBOX` | `1` in the image | Turns off Chromium's own sandbox, which Docker's default seccomp profile refuses |
 
 ## test-agent
@@ -61,6 +62,7 @@ The compose file reads these variables from the environment or from a `.env` fil
 | `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` | the start needs one | The model credential |
 | `TEST_AGENT_IMAGE` | `ghcr.io/digio-nz/workbench:latest` | The image of `test-agent` |
 | `TEST_BROWSER_VIEW_PORT` | `6080` | The port of the viewer on the loopback address of the host |
+| `TEST_BROWSER_BYPASS_SECRET` and `TEST_BROWSER_BYPASS_HOSTS` | none | The bypass secret and its hosts, for a Preview behind Vercel Authentication |
 
 ```sh
 cd bench
@@ -82,6 +84,7 @@ bash bench/scripts/test-browser-selftest.sh
 ## Limits
 
 - The viewer and the MCP server have no password. The compose file publishes the viewer on the loopback address and keeps the MCP port on the network of the bench. Give a person the viewer through the tailnet.
-- A client of the MCP server can run Playwright code inside `test-browser`. Give that container no mount and no variable that holds a secret of another system.
+- A client of the MCP server can run Playwright code inside `test-browser`, so it can read each variable of that container. The settings of `test-agent` deny that tool, and the container is the limit. Give `test-browser` no mount and no variable that holds a secret of another system. The bypass secret is the one exception: it opens only the Previews of one project, which hold fake data.
 - Put only a Preview login with fake data in the profile. A login that can change a real system gives the agent that system.
 - `test-agent` reaches the internet, because the model API is there. Its limits are the tool list and the content of its container, not its network.
+- The settings of `test-agent` deny file writes, web tools and subagents. Claude Code still runs a shell command that only reads, such as `ls`. The container holds nothing for such a command to find but the skills, the brief and the model credential.

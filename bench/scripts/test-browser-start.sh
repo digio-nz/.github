@@ -8,6 +8,7 @@ view_port="${TEST_BROWSER_VIEW_PORT:-6080}"
 mcp_port="${TEST_BROWSER_MCP_PORT:-8931}"
 data="${TEST_BROWSER_DATA:-$HOME/data}"
 novnc="${TEST_BROWSER_NOVNC_DIR:-/usr/share/novnc}"
+bypass_page="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/test-browser-bypass.ts"
 
 fail() {
   echo "test-browser-start: $*" >&2
@@ -18,6 +19,18 @@ for tool in Xvnc openbox websockify playwright-mcp; do
   command -v "$tool" >/dev/null || fail "missing tool: $tool"
 done
 [ -f "$novnc/vnc.html" ] || fail "missing viewer page: $novnc/vnc.html"
+
+# The bypass secret goes only to the hosts named with it. A pattern that starts with a wildcard label names the sites of other people.
+bypass_hosts="${TEST_BROWSER_BYPASS_HOSTS:-}"
+if [ -n "${TEST_BROWSER_BYPASS_SECRET:-}" ] || [ -n "$bypass_hosts" ]; then
+  [ -n "${TEST_BROWSER_BYPASS_SECRET:-}" ] || fail "TEST_BROWSER_BYPASS_HOSTS is set and TEST_BROWSER_BYPASS_SECRET is not"
+  [ -n "$bypass_hosts" ] || fail "TEST_BROWSER_BYPASS_SECRET is set and TEST_BROWSER_BYPASS_HOSTS is not"
+  IFS=, read -ra bypass_list <<<"$bypass_hosts"
+  for host in "${bypass_list[@]}"; do
+    [[ "$host" =~ ^[a-z0-9]([a-z0-9*-]*[a-z0-9*])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] \
+      || fail "TEST_BROWSER_BYPASS_HOSTS: '$host' is not a host name; a wildcard goes inside the first label only, after a name"
+  done
+fi
 
 mkdir -p "$data/profile" "$data/output"
 vnc_port=$((5900 + ${display#:}))
@@ -51,6 +64,11 @@ mcp_args=(
 [ -n "${TEST_BROWSER_ALLOWED_ORIGINS:-}" ] && mcp_args+=(--allowed-origins "$TEST_BROWSER_ALLOWED_ORIGINS")
 [ -n "${TEST_BROWSER_SECRETS_FILE:-}" ] && mcp_args+=(--secrets "$TEST_BROWSER_SECRETS_FILE")
 [ "${TEST_BROWSER_NO_SANDBOX:-}" = 1 ] && mcp_args+=(--no-sandbox)
+
+if [ -n "$bypass_hosts" ]; then
+  [ -f "$bypass_page" ] || fail "missing init page: $bypass_page"
+  mcp_args+=(--init-page "$bypass_page")
+fi
 
 DISPLAY="$display" playwright-mcp "${mcp_args[@]}" &
 names[$!]="playwright-mcp"

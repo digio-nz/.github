@@ -12,6 +12,6 @@
       "Skill",
       "Bash(bash /home/vscode/.claude/skills/*/scripts/*)"
     ],
-    "deny": ["Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent"]
+    "deny": ["mcp__test-browser__browser_run_code_unsafe", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent"]
   }
 }
