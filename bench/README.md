@@ -28,7 +28,7 @@ The two names do not change. A machine can also run a browser that agents share 
 | Variable | Default | Sets |
 | --- | --- | --- |
 | `TEST_BROWSER_GEOMETRY` | `1440x900` | The size of the screen and of the page |
-| `TEST_BROWSER_MCP_ALLOWED_HOSTS` | loopback only; `test-browser` in the compose file | The host names that a client can use for the MCP server |
+| `TEST_BROWSER_MCP_ALLOWED_HOSTS` | loopback only; `test-browser:8931` in the compose file | The `Host` values, each a name with its port, that a client can use for the MCP server |
 | `TEST_BROWSER_ALLOWED_ORIGINS` | each origin | The origins that the browser can request. Playwright MCP states that this list is not a security boundary |
 | `TEST_BROWSER_SECRETS_FILE` | none | A dotenv file of login values. The agent types a value by its name and does not see it |
 | `TEST_BROWSER_NO_SANDBOX` | `1` in the image | Turns off Chromium's own sandbox, which Docker's default seccomp profile refuses |

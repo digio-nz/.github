@@ -8,8 +8,8 @@ services:
     image: test-browser
     restart: unless-stopped
     environment:
-      # test-agent calls the MCP server by this name. A call by another name, such as from the host, is refused.
-      TEST_BROWSER_MCP_ALLOWED_HOSTS: test-browser
+      # test-agent calls the MCP server by this name and port. A call by another name, such as from the host, is refused.
+      TEST_BROWSER_MCP_ALLOWED_HOSTS: test-browser:8931
     ports:
       # The viewer only. The MCP port stays on the network of the bench.
       - "127.0.0.1:${TEST_BROWSER_VIEW_PORT:-6080}:6080"
