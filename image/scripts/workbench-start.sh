@@ -14,6 +14,9 @@ if [ -r "$token_file" ]; then OP_SERVICE_ACCOUNT_TOKEN="$(tr -d '[:space:]' < "$
 scripts="$HOME/.digio/github"
 state="$HOME/.local/state/digio-workbench"
 mkdir -p "$state"
+# A caller can start a program in this container at any moment, so the machine id of the home goes in first.
+# post-start.sh reports the line in machine-id.fail.
+if command -v machine-id.sh >/dev/null; then machine-id.sh 2>"$state/machine-id.fail" || true; fi
 # With a service account, this script runs itself once more inside `op run`. The start scripts, T3 and each agent then have each
 # value of the reference file in their environment, and no value goes to a file. `op run` hides a value that a process prints.
 # A test with a time limit comes first, and it runs up to 3 times, because at boot the network can come up after this script.

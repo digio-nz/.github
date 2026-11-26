@@ -85,6 +85,9 @@ jobs:
       - name: Check the Nix Setup
         shell: bash
         run: bash image/scripts/nix-setup-selftest.sh
+      - name: Check the Machine Id
+        shell: bash
+        run: bash image/scripts/machine-id-selftest.sh
       - name: Check the Lint Hook
         shell: bash
         run: bash image/scripts/lint-hook-selftest.sh

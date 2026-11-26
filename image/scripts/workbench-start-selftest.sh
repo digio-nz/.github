@@ -267,6 +267,10 @@ grep -Fq 'install-briefs.sh apply' "$CALLS" || fail "post-start stopped at the f
 home="$TEST_DIR/home-no-michelin"; mkdir -p "$home"
 if HOME="$home" FAIL_nix_setup=1 bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1; then fail "post-start hid a failed nix-setup.sh"; fi
 grep -Fxq "FAIL: nix: fixture" "$TEST_DIR/out" || fail "post-start did not print the fault of nix-setup.sh: $(cat "$TEST_DIR/out")"
+mkdir -p "$home/.local/state/digio-workbench"; echo "FAIL: machine-id: fixture" > "$home/.local/state/digio-workbench/machine-id.fail"
+HOME="$home" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1 || true
+grep -Fxq "FAIL: machine-id: fixture" "$TEST_DIR/out" || fail "post-start did not print the line of machine-id.fail: $(cat "$TEST_DIR/out")"
+rm "$home/.local/state/digio-workbench/machine-id.fail"
 if HOME="$home" bash "$TEST_DIR/devcontainer/post-start.sh" > "$TEST_DIR/out" 2>&1; then fail "post-start accepted missing Michelin"; fi
 grep -Fq "FAIL: install-briefs: $home/.digio/michelin is missing" "$TEST_DIR/out" || fail "post-start did not warn that the briefs are missing: $(cat "$TEST_DIR/out")"
 
