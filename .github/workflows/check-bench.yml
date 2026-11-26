@@ -1,0 +1,60 @@
+name: Check Bench
+on:
+  pull_request:
+    paths: ["bench/**", ".github/workflows/check-bench.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bench:
+    name: Build and Self-Test
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # The compose file requires these for test-agent, which this job does not start.
+      DIGIO_SKILLS_ROOT: /nonexistent/digio-skills
+      DIGIO_MICHELIN_ROOT: /nonexistent/digio-michelin
+    steps:
+      - name: Check Out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Self-Test the Start of test-agent
+        shell: bash
+        run: bash bench/scripts/test-agent-start-selftest.sh
+      - name: Start test-browser
+        shell: bash
+        run: docker compose -f bench/compose.yaml up -d --build --wait test-browser
+      - name: Name test-browser on the Runner
+        shell: bash
+        run: |
+          # The MCP server answers a call by the name test-browser only, so the runner needs that name.
+          id="$(docker compose -f bench/compose.yaml ps -q test-browser)"
+          address="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$id")"
+          [ -n "$address" ] || { echo "FAIL: test-browser has no address on the network of the bench" >&2; exit 1; }
+          echo "$address test-browser" | sudo tee -a /etc/hosts
+      - name: Self-Test test-browser
+        shell: bash
+        run: bash bench/scripts/test-browser-selftest.sh http://test-browser:6080 http://test-browser:8931/mcp
+      - name: Check That a Call by Another Name Is Refused
+        shell: bash
+        run: |
+          address="$(awk '$2 == "test-browser" {print $1}' /etc/hosts)"
+          code="$(curl -s -o /dev/null -w '%{http_code}' -m 10 -X POST "http://$address:8931/mcp" -H 'content-type: application/json' -d '{}')"
+          [ "$code" = 403 ] || { echo "FAIL: the MCP server answered $code, not 403, to a call by its address" >&2; exit 1; }
+      - name: Check That a Bypass Secret With No Host Stops the Start
+        shell: bash
+        run: |
+          if out="$(docker run --rm -e TEST_BROWSER_BYPASS_SECRET=selftest test-browser 2>&1)"; then
+            echo "FAIL: test-browser started with a bypass secret and no host" >&2; exit 1
+          fi
+          grep -Fq "TEST_BROWSER_BYPASS_SECRET is set and TEST_BROWSER_BYPASS_HOSTS is not" <<< "$out" || { echo "FAIL: the start did not name the fault: $out" >&2; exit 1; }
+          if out="$(docker run --rm -e TEST_BROWSER_BYPASS_SECRET=selftest -e 'TEST_BROWSER_BYPASS_HOSTS=*.vercel.app' test-browser 2>&1)"; then
+            echo "FAIL: test-browser started with a bypass host that names each Vercel site" >&2; exit 1
+          fi
+          grep -Fq "is not a host name" <<< "$out" || { echo "FAIL: the start did not refuse the host: $out" >&2; exit 1; }
+      - name: Print the Log of test-browser
+        if: failure()
+        shell: bash
+        run: docker compose -f bench/compose.yaml logs test-browser
