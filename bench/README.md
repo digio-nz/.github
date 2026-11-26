@@ -46,7 +46,8 @@ The compose file mounts four things into it, each read-only:
 | A digio-skills checkout and a digio-michelin checkout | The skills and the agent brief. The host keeps the two checkouts current, so the container needs no GitHub token |
 
 `test-agent-start.sh` links the skills of the preset for Claude Code, writes the agent brief, checks that the MCP server answers, and then waits.
-It stops the container with a `FAIL: test-agent:` line in three cases: the preset or the model credential is missing, its environment holds a credential of another system, or a step fails.
+It stops the container with a `FAIL: test-agent:` line when the preset or the model credential is missing.
+It does the same when its environment holds a credential of another system, or when a step fails.
 
 ## Run it
 
