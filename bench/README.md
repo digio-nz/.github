@@ -78,6 +78,30 @@ docker run -d --name test-browser -p 127.0.0.1:6080:6080 -p 127.0.0.1:8931:8931 
 bash bench/scripts/test-browser-selftest.sh
 ```
 
+## A long run
+
+`test-agent-run.sh` runs full browser tests on the host of the bench for some hours, one person and one round at a time:
+
+```sh
+bash bench/scripts/test-agent-run.sh <product> <address> <hours> [<feature to skip>]
+```
+
+Each run is one Claude Code session in `test-agent`, so a long test does not fill one context.
+The round sets the focus of the run; the method of the `browser-test` skill gives each focus.
+The runner keeps these records in `~/test-bench/results/<product>-<UTC time>`, or in the folder that `RESULTS` names:
+
+| File | Holds |
+| --- | --- |
+| `index.md` | A row for each run: the round, the person, the start, the exit code and the first line of the report |
+| `r<round>-<person>.md` | The report of the run |
+| `r<round>-<person>.jsonl` | The transcript of the session: each tool call and each page that the agent read |
+| `browser-output/` | The screenshots and the session logs of the MCP server, copied from `test-browser` at the end |
+
+A run that fails, such as at a usage limit of the model, gets a `FAIL:` line, and the next run waits 5 minutes.
+Three failed runs in a row stop the runner. It exits 1 when a run failed.
+`ROUNDS` stops it after that many rounds.
+
+`test-agent-run-selftest.sh` checks the runner offline, with a stub of `docker`.
 `test-browser-selftest.sh` checks a running `test-browser`: the viewer answers, the MCP server opens a session, and the browser opens a page.
 `test-agent-start-selftest.sh` checks each refusal of `test-agent-start.sh` offline.
 

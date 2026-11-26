@@ -23,6 +23,9 @@ jobs:
       - name: Self-Test the Start of test-agent
         shell: bash
         run: bash bench/scripts/test-agent-start-selftest.sh
+      - name: Self-Test the Runner of test-agent
+        shell: bash
+        run: bash bench/scripts/test-agent-run-selftest.sh
       - name: Start test-browser
         shell: bash
         run: docker compose -f bench/compose.yaml up -d --build --wait test-browser
