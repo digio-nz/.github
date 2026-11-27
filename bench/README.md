@@ -31,7 +31,7 @@ The two names do not change. A machine can also run a browser that agents share 
 | `TEST_BROWSER_MCP_ALLOWED_HOSTS` | loopback only; `test-browser:8931` in the compose file | The `Host` values, each a name with its port, that a client can use for the MCP server |
 | `TEST_BROWSER_ALLOWED_ORIGINS` | each origin | The origins that the browser can request. Playwright MCP states that this list is not a security boundary |
 | `TEST_BROWSER_SECRETS_FILE` | none | A dotenv file of login values. The agent types a value by its name and does not see it |
-| `TEST_BROWSER_BYPASS_SECRET` and `TEST_BROWSER_BYPASS_HOSTS` | none | A [Protection Bypass for Automation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation) secret of one Vercel project, and the hosts that get it, with commas between them. A host can have `*` in its first label, after a name, such as `product-*-team.vercel.app`. The browser adds the secret to each request for those hosts and to no other request |
+| `TEST_BROWSER_BYPASS` | none | The bypass rules, with a comma or a space between them. A rule is `<host pattern>=<secret>`: the hosts of one Vercel project and its [Protection Bypass for Automation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation) secret. A host can have `*` in its first label, after a name, such as `product-*-team.vercel.app`. The browser adds the secret of a rule to each request for its hosts and to no other request |
 | `TEST_BROWSER_NO_SANDBOX` | `1` in the image | Turns off Chromium's own sandbox, which Docker's default seccomp profile refuses |
 
 ## test-agent
@@ -62,7 +62,7 @@ The compose file reads these variables from the environment or from a `.env` fil
 | `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` | the start needs one | The model credential |
 | `TEST_AGENT_IMAGE` | `ghcr.io/digio-nz/workbench:latest` | The image of `test-agent` |
 | `TEST_BROWSER_VIEW_PORT` | `6080` | The port of the viewer on the loopback address of the host |
-| `TEST_BROWSER_BYPASS_SECRET` and `TEST_BROWSER_BYPASS_HOSTS` | none | The bypass secret and its hosts, for a Preview behind Vercel Authentication |
+| `TEST_BROWSER_BYPASS` | none | The bypass rules, one for each product whose Preview is behind Vercel Authentication |
 
 ```sh
 cd bench

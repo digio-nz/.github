@@ -20,17 +20,22 @@ for tool in Xvnc openbox websockify playwright-mcp; do
 done
 [ -f "$novnc/vnc.html" ] || fail "missing viewer page: $novnc/vnc.html"
 
-# The bypass secret goes only to the hosts named with it. A pattern that starts with a wildcard label names the sites of other people.
-bypass_hosts="${TEST_BROWSER_BYPASS_HOSTS:-}"
-if [ -n "${TEST_BROWSER_BYPASS_SECRET:-}" ] || [ -n "$bypass_hosts" ]; then
-  [ -n "${TEST_BROWSER_BYPASS_SECRET:-}" ] || fail "TEST_BROWSER_BYPASS_HOSTS is set and TEST_BROWSER_BYPASS_SECRET is not"
-  [ -n "$bypass_hosts" ] || fail "TEST_BROWSER_BYPASS_SECRET is set and TEST_BROWSER_BYPASS_HOSTS is not"
-  IFS=, read -ra bypass_list <<<"$bypass_hosts"
-  for host in "${bypass_list[@]}"; do
-    [[ "$host" =~ ^[a-z0-9]([a-z0-9*-]*[a-z0-9*])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] \
-      || fail "TEST_BROWSER_BYPASS_HOSTS: '$host' is not a host name; a wildcard goes inside the first label only, after a name"
-  done
-fi
+# Each bypass rule is <host pattern>=<secret>. A secret goes only to the hosts of its rule. A pattern that starts with a wildcard label names the sites of other people.
+# A message names the host of a rule and never its secret.
+bypass_rules="${TEST_BROWSER_BYPASS:-}"
+rule_count=0
+IFS=', ' read -ra rule_list <<<"$bypass_rules"
+for rule in "${rule_list[@]}"; do
+  [ -n "$rule" ] || continue
+  rule_count=$((rule_count + 1))
+  [[ "$rule" == *=* ]] || fail "TEST_BROWSER_BYPASS: rule $rule_count has no '='; a rule is <host pattern>=<secret>"
+  host="${rule%%=*}"
+  # A first part with no dot can be a secret in the wrong place, so the message does not print it.
+  [[ "$host" == *.* ]] || fail "TEST_BROWSER_BYPASS: rule $rule_count does not start with a host name; a rule is <host pattern>=<secret>"
+  [[ "$host" =~ ^[a-z0-9]([a-z0-9*-]*[a-z0-9*])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] \
+    || fail "TEST_BROWSER_BYPASS: '$host' is not a host name; a wildcard goes inside the first label only, after a name"
+  [ -n "${rule#*=}" ] || fail "TEST_BROWSER_BYPASS: the rule of $host has no secret"
+done
 
 mkdir -p "$data/profile" "$data/output"
 vnc_port=$((5900 + ${display#:}))
@@ -70,7 +75,7 @@ mcp_args=(
 [ -n "${TEST_BROWSER_SECRETS_FILE:-}" ] && mcp_args+=(--secrets "$TEST_BROWSER_SECRETS_FILE")
 [ "${TEST_BROWSER_NO_SANDBOX:-}" = 1 ] && mcp_args+=(--no-sandbox)
 
-if [ -n "$bypass_hosts" ]; then
+if [ "$rule_count" -gt 0 ]; then
   [ -f "$bypass_page" ] || fail "missing init page: $bypass_page"
   mcp_args+=(--init-page "$bypass_page")
 fi
