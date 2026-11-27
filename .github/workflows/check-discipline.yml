@@ -39,6 +39,7 @@ jobs:
         run: |
           bash .github/actions/discipline/gates-selftest.sh
           bash .github/actions/discipline/no-secret/secret-guard-selftest.sh
+          python3 .github/actions/discipline/trigger-selftest.py
       - name: The Discipline jobs are hosted and pinned
         shell: bash
         run: bash .github/actions/discipline/selftest-workflow.sh .github/workflows/discipline.yml
