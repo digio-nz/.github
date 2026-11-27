@@ -236,7 +236,7 @@ jobs:
         shell: bash
         run: npm install -g --no-audit --no-fund vercel@latest
       - name: Install the 1Password CLI
-        uses: 1password/install-cli-action@f800e0b6b8e9a137ed2c585f54cd68182ca83e7b # v4.1.0
+        uses: 1password/install-cli-action@1a3160d5e9de1ae0803eaa08a88746f5ae3daa50 # v4.1.0
       # The sandbox check: the user, the home, and tools.sh check --scope image --latest. A missing or stale tool fails.
       - name: Boot a Sandbox and Check the Tools
         shell: bash
