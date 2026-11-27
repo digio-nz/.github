@@ -53,9 +53,6 @@
 #     this file (route-label preparation, review-gate.yml) so none of them
 #     re-derives it.
 #
-#   pr-labels-apply <owner/name> <n>
-#     `pr-labeller apply` for the PR. Not a gate: it writes the labels.
-#
 #   no-hand-version <base> <head>
 #     The diff changes no `"version"` in a package.json and no CHANGELOG.md.
 #     A package.json that is new in the diff may add one `"version": "0.0.0"`
@@ -416,13 +413,5 @@ EOF
     exit 0
     ;;
 
-  pr-labels-apply)
-    REPO="${1:-}"; NUMBER="${2:-}"
-    [ -n "$REPO" ] && [ -n "$NUMBER" ] || die3 "usage: gates.sh pr-labels-apply <owner/name> <n>"
-    label_args=(apply --repo "$REPO" --pr "$NUMBER")
-    if [ -n "${3:-}" ] && [ -n "${4:-}" ]; then label_args+=(--base "$3" --head "$4"); fi
-    node --experimental-strip-types "${DIGIO_SKILLS_ROOT:-$HOME/.digio/skills}/archive/pr-labeller/scripts/pr-labeller.ts" "${label_args[@]}"
-    ;;
-
-  *) die3 "usage: gates.sh [append-only|pr-sections|pr-title|pr-labels-apply|exempt-pr|no-hand-version|migrations|no-secret|actionlint|actionlint-install] ..." ;;
+  *) die3 "usage: gates.sh [append-only|pr-sections|pr-title|exempt-pr|no-hand-version|migrations|no-secret|actionlint|actionlint-install] ..." ;;
 esac

@@ -215,19 +215,6 @@ run 1 "exempt-pr: process-deploy-foo is not" -- exempt-pr process-deploy-foo som
 run 1 "exempt-pr: an issue branch is not" -- exempt-pr fm-issue-41 digbycampbell
 run 3 "exempt-pr: no branch is a usage error" -- exempt-pr
 
-mkdir -p "$work/label-bin"
-cat > "$work/label-bin/node" <<'NODE'
-#!/usr/bin/env bash
-printf '%s\n' "$@" > "$LABEL_ARGS"
-NODE
-chmod +x "$work/label-bin/node"
-PATH="$work/label-bin:$PATH" LABEL_ARGS="$work/label-args" run 0 "pr-labels-apply uses the complete local diff" -- pr-labels-apply o/r 7 base-ref head-ref
-if [ "$(tail -n 4 "$work/label-args")" = "$(printf '%s\n' --base base-ref --head head-ref)" ]; then
-  echo "ok   pr-labels-apply forwards both refs to the labeller"; pass=$((pass + 1))
-else
-  echo "FAIL pr-labels-apply lost the local diff refs"; fail=$((fail + 1))
-fi
-
 # ── no-hand-version ──────────────────────────────────────────────────
 printf '{"name":"x","version":"1.0.0"}\n' > package.json
 git add package.json && git commit -qm 'package'
@@ -541,7 +528,7 @@ cat > "$wf" <<'YML'
 name: Discipline
 on: push
 jobs:
-  labels:
+  discipline:
     runs-on: ${{ vars.PROCESS_HOSTED_RUNNER || 'ubuntu-latest' }}
     steps: [{ run: true }]
 YML
@@ -603,25 +590,6 @@ if bash "$here/selftest-workflow.sh" "$work/missing.yml" >/dev/null 2>&1; then
   echo "FAIL selftest: a missing workflow must fail"; fail=$((fail + 1))
 else
   echo "ok   selftest: a missing workflow fails"; pass=$((pass + 1))
-fi
-
-f="$here/pr-labels-apply/action.yml"
-if grep -Fq 'actions/create-github-app-token@v3' "$f" \
-  && grep -Fq 'app-id: ${{ inputs.reader-app-id }}' "$f" \
-  && grep -Fq 'READER_TOKEN: ${{ steps.reader.outputs.token }}' "$f" \
-  && grep -Fq 'GH_TOKEN: ${{ github.token }}' "$f" \
-  && ! grep -Fq 'vars.READER_APP_ID' "$f" \
-  && ! grep -Fq 'secrets.READER_APP_PRIVATE_KEY' "$f"; then
-  echo "ok   pr-labels-apply mints a digio-reader token and keeps github.token"; pass=$((pass + 1))
-else
-  echo "FAIL pr-labels-apply mints a digio-reader token and keeps github.token"; fail=$((fail + 1))
-fi
-wf_disc="$here/../../workflows/discipline.yml"
-if grep -Fq 'reader-app-id: ${{ vars.READER_APP_ID }}' "$wf_disc" \
-  && grep -Fq 'reader-app-private-key: ${{ secrets.READER_APP_PRIVATE_KEY }}' "$wf_disc"; then
-  echo "ok   Discipline workflow passes the reader App credentials into the actions"; pass=$((pass + 1))
-else
-  echo "FAIL Discipline workflow passes the reader App credentials into the actions"; fail=$((fail + 1))
 fi
 
 if grep -Fq '.github/actions/discipline/gates-selftest.sh' "$here/gates.sh" \
