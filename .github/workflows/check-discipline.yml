@@ -6,9 +6,7 @@ on:
     paths:
       - ".github/actions/**"
       - ".github/workflows/discipline.yml"
-      - ".github/workflows/label-pr.yml"
       - ".github/workflows/check-discipline.yml"
-      - "skills.ref"
 
 permissions:
   contents: read
@@ -41,7 +39,6 @@ jobs:
         run: |
           bash .github/actions/discipline/gates-selftest.sh
           bash .github/actions/discipline/no-secret/secret-guard-selftest.sh
-          python3 .github/actions/discipline/label-coverage-selftest.py
       - name: The Discipline jobs are hosted and pinned
         shell: bash
         run: bash .github/actions/discipline/selftest-workflow.sh .github/workflows/discipline.yml

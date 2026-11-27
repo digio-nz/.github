@@ -9,13 +9,12 @@ name: Discipline
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, edited, labeled]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
   merge_group:
 
 permissions:
   contents: read
   pull-requests: write
-  issues: read
 
 jobs:
   discipline:
@@ -137,39 +136,3 @@ jobs:
             } else if (failed.length) {
               await github.rest.issues.createComment({ ...context.repo, issue_number, body });
             }
-
-  labels:
-    name: Label the PR
-    if: github.event_name == 'pull_request' && (github.event.action != 'labeled' || contains(fromJSON('["Task","Bug","Plan","Phase"]'), github.event.label.name))
-    concurrency:
-      group: pr-labels-${{ github.repository }}-${{ github.event.pull_request.number }}
-      cancel-in-progress: false
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Read the PR live from the API
-        id: pr
-        uses: digio-nz/.github/.github/actions/discipline/read-pr@51916cfe2253db2cfe5a6cf9a024fde18e1dd58a
-      - name: Check out the commit that the event names
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ steps.pr.outputs.head }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Install Node
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: "*"
-      - name: Fetch the range the labeller reads
-        uses: digio-nz/.github/.github/actions/discipline/fetch-range@51916cfe2253db2cfe5a6cf9a024fde18e1dd58a
-        with:
-          base: ${{ steps.pr.outputs.base }}
-          head: ${{ steps.pr.outputs.head }}
-      - name: Label the PR (pr-labeller apply)
-        uses: digio-nz/.github/.github/actions/discipline/pr-labels-apply@e77a0ef234420b2ab90dd0eecf9c8367474e0387
-        with:
-          repo: ${{ github.repository }}
-          number: ${{ steps.pr.outputs.number }}
-          skills-read-token: ${{ secrets.DIGIO_SKILLS_READ_TOKEN }}
-          reader-app-id: ${{ vars.READER_APP_ID }}
-          reader-app-private-key: ${{ secrets.READER_APP_PRIVATE_KEY }}

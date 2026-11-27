@@ -21,7 +21,7 @@ This public repo holds the org issue forms, the PR template, the shared workflow
 ## Rules
 
 - The repo is public. Put no secret, no private repo detail beyond a repo name, no machine detail and no private data in it.
-- Other repos call `label-pr.yml` and `package-release.yml` at `@main`, so a merge changes them at once.
+- Other repos call `package-release.yml` at `@main`, so a merge changes it at once.
 - `discipline.yml` stays advisory: each gate continues on error, except no-secret and the setup steps.
 - Pin each action to a commit in `discipline.yml`. `selftest-workflow.sh` checks this.
 
